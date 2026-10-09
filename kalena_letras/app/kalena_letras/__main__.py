@@ -66,36 +66,58 @@ class Aligner:
         return self.model
 
     def voice(self, name: str, path: str) -> Voice:
-        samples = read_mono(path, SAMPLE_RATE)
+        return self.voice_from_samples(name, read_mono(path, SAMPLE_RATE))
+
+    def voice_from_samples(self, name: str, samples) -> Voice:
         em, frame_ms = self.emission_model().emissions(samples)
         return Voice(name, em, frame_ms, energy_db(samples))
 
 
 def align_audio(aligner: "Aligner", mix_wav: str, lines: list, synced: bool, work: str):
     """Separa las voces de `mix_wav` y pone tiempos por palabra a `lines`. Devuelve (informe, confianzas, s separando, s alineando)."""
-    log.info("  · Separando la voz de la música y la voz principal de los coros…")
+    t_sep = 0.0
+    log.info("  · Separando la voz principal del resto (música y coros)…")
     t = time.time()
-    stems = aligner.separator.run(mix_wav, os.path.join(work, "voces"))
-    t_sep = time.time() - t
+    out_dir = os.path.join(work, "voces")
+    path_a, path_b = aligner.separator.karaoke(mix_wav, out_dir)
+    t_sep += time.time() - t
 
     log.info("  · Alineando la letra…")
-    t = time.time()
-    a = aligner.voice("voz_a", stems.voice_a)
-    b = aligner.voice("voz_b", stems.voice_b)
+    t_align0 = time.time()
+    a = aligner.voice("voz_a", path_a)
+    b = aligner.voice("voz_b", path_b)
     model = aligner.emission_model()
-    # La voz principal es la que encaja con la letra entera; la otra son los coros.
+    # La voz principal es la que encaja con la letra entera; la otra es la música con los coros.
     score = {v.name: _global_conf(lines, v, model.token_ids) for v in (a, b)}
-    lead, backing = (a, b) if score["voz_a"] >= score["voz_b"] else (b, a)
-    lead.name, backing.name = "principal", "coros"
-    full_cache = {}
+    lead = a if score["voz_a"] >= score["voz_b"] else b
+    lead.name = "principal"
+    lead_path = path_a if lead is a else path_b
+    cache = {}
+
+    def vocals_samples():
+        """La voz completa: se separa solo la primera vez que hace falta."""
+        nonlocal t_sep
+        if "voz" not in cache:
+            log.info("  · Separando la voz completa (para los coros)…")
+            t0 = time.time()
+            cache["voz"] = read_mono(aligner.separator.vocals(mix_wav, out_dir), SAMPLE_RATE)
+            t_sep += time.time() - t0
+        return cache["voz"]
 
     def full():
-        if "v" not in full_cache:
-            full_cache["v"] = aligner.voice("voz_completa", stems.vocals)
-        return full_cache["v"]
+        if "full" not in cache:
+            cache["full"] = aligner.voice_from_samples("voz_completa", vocals_samples())
+        return cache["full"]
+
+    backing = None
+    if any(l.backing_words for l in lines):
+        voz = vocals_samples()
+        principal = read_mono(lead_path, SAMPLE_RATE)
+        n = min(voz.size, principal.size)
+        backing = aligner.voice_from_samples("coros", voz[:n] - principal[:n])
 
     report = time_lines(lines, lead, backing, full, model.token_ids, synced)
-    return report, score, t_sep, time.time() - t
+    return report, score, t_sep, time.time() - t_align0
 
 
 def process(song: dict, jf: Jellyfin, user_id: str, aligner: Aligner, opts: dict) -> dict:

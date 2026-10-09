@@ -6,7 +6,6 @@ url: https://github.com/RubenGB99/kalena-addons
 arch:
   - amd64
 init: false
-startup: application
 boot: manual
 map:
   - share:rw

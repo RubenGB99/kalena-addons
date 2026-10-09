@@ -1,7 +1,9 @@
 """Separación de voces con audio-separator (modelos de la comunidad UVR).
 
-1. Voz / música: se queda solo la voz (sin instrumentos).
-2. Voz principal / coros: sobre esa voz, un modelo de karaoke separa a la cantante de los coros.
+- Karaoke (sobre la canción entera): separa la voz principal de todo lo demás (música y coros).
+  Es lo único imprescindible: la letra se alinea sobre la voz principal.
+- Voz (sobre la canción entera, solo si hace falta): la voz completa, principal y coros. Los coros
+  salen de restarle la voz principal.
 
 Los nombres de las salidas dependen de cada modelo, así que no se adivina cuál es la voz principal:
 lo decide quien llama, viendo cuál de las dos encaja mejor con la letra.
@@ -10,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
 
 MODELS = {
     # Máxima calidad (RoFormer): más lento en CPU.
@@ -18,13 +19,6 @@ MODELS = {
     # Rápida (MDX-Net, ONNX): bastante peor separando, pero varias veces más rápida.
     "rapida": ("UVR-MDX-NET-Voc_FT.onnx", "UVR_MDXNET_KARA_2.onnx"),
 }
-
-
-@dataclass
-class Stems:
-    vocals: str
-    voice_a: str   # una de las dos voces que salen del modelo de karaoke
-    voice_b: str
 
 
 class Separator:
@@ -35,23 +29,32 @@ class Separator:
         self.vocals_model, self.karaoke_model = MODELS.get(quality, MODELS["maxima"])
         os.makedirs(model_dir, exist_ok=True)
 
-    def _run(self, model: str, src: str, out_dir: str, names: dict[str, str]) -> list[str]:
+    def _run(self, model: str, src: str, out_dir: str, prefix: str):
+        """Separa `src` con `model`. Devuelve [(nombre de la salida según el modelo, archivo), ...]."""
+        os.makedirs(out_dir, exist_ok=True)
         sep = self._cls(model_file_dir=self.model_dir, output_dir=out_dir, output_format="WAV",
                         log_level=logging.WARNING)
         sep.load_model(model_filename=model)
         inst = sep.model_instance
-        mapping = {inst.primary_stem_name: names["primary"], inst.secondary_stem_name: names["secondary"]}
-        files = sep.separate(src, custom_output_names=mapping)
-        paths = [f if os.path.isabs(f) else os.path.join(out_dir, f) for f in files]
-        by_name = {os.path.splitext(os.path.basename(p))[0]: p for p in paths}
-        return [by_name.get(names["primary"]), by_name.get(names["secondary"])], (inst.primary_stem_name, inst.secondary_stem_name)
+        stems = [inst.primary_stem_name, inst.secondary_stem_name]
+        names = {stems[0]: prefix + "_1", stems[1]: prefix + "_2"}
+        sep.separate(src, custom_output_names=names)
+        out = []
+        for stem in stems:
+            path = os.path.join(out_dir, names[stem] + ".wav")
+            if not os.path.exists(path):
+                raise RuntimeError(f"La separación ({model}) no ha generado {os.path.basename(path)}")
+            out.append((stem or "", path))
+        return out
 
-    def run(self, mix_wav: str, out_dir: str) -> Stems:
-        os.makedirs(out_dir, exist_ok=True)
-        (p, s), (pn, sn) = self._run(self.vocals_model, mix_wav, out_dir, {"primary": "paso1_a", "secondary": "paso1_b"})
-        # La voz es la salida llamada «vocals» (o la principal si el modelo no lo dice).
-        vocals = s if "vocal" in (sn or "").lower() and "vocal" not in (pn or "").lower() else p
-        (a, b), _ = self._run(self.karaoke_model, vocals, out_dir, {"primary": "paso2_a", "secondary": "paso2_b"})
-        if not (vocals and a and b):
-            raise RuntimeError("La separación de voces no ha generado los archivos esperados")
-        return Stems(vocals=vocals, voice_a=a, voice_b=b)
+    def karaoke(self, mix_wav: str, out_dir: str) -> tuple[str, str]:
+        """Las dos salidas del modelo de karaoke: una es la voz principal y la otra, todo lo demás."""
+        (_, a), (_, b) = self._run(self.karaoke_model, mix_wav, out_dir, "karaoke")
+        return a, b
+
+    def vocals(self, mix_wav: str, out_dir: str) -> str:
+        """La voz completa (principal y coros), sin música."""
+        (n1, p1), (n2, p2) = self._run(self.vocals_model, mix_wav, out_dir, "voz")
+        if "vocal" in n2.lower() and "vocal" not in n1.lower():
+            return p2
+        return p1

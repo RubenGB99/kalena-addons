@@ -93,17 +93,25 @@ def test_whole_flow(tmp_path, monkeypatch):
         def __init__(self, quality):
             self.separator = self
 
-        def run(self, mix, out):
-            return type("S", (), {"vocals": "v", "voice_a": "a", "voice_b": "b"})()
+        def karaoke(self, mix, out):
+            return "a", "b"
+
+        def vocals(self, mix, out):
+            return "v"
 
         def voice(self, name, path):
-            em = {"a": em_back, "b": em_lead}.get(path, em_lead)  # la principal llega como «b»
+            em = {"a": em_back, "b": em_lead}[path]  # la voz principal llega como «b»
             return Voice(name, em, 20.0, np.full(700, -60.0))
+
+        def voice_from_samples(self, name, samples):
+            assert name == "coros"
+            return Voice(name, em_back, 20.0, np.full(700, -60.0))
 
         def emission_model(self):
             return type("Mdl", (), {"token_ids": staticmethod(ids)})()
 
     monkeypatch.setattr(M, "Aligner", FakeAligner)
+    monkeypatch.setattr(M, "read_mono", lambda path, sr=16_000: np.zeros(16_000 * 7, dtype=np.float32))
     monkeypatch.setattr(M, "DATA", str(tmp_path / "data"))
     monkeypatch.setattr(M, "MODELS", str(tmp_path / "data" / "modelos"))
     monkeypatch.setattr(M, "WORK", str(tmp_path / "data" / "trabajo"))

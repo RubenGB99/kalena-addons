@@ -10,11 +10,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg libsndfile1 libsamplerate0 build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# PyTorch solo para CPU (el mini PC no tiene tarjeta gráfica): mucho más pequeño.
-RUN pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cpu
-
+# Todo en una sola instalación, con PyTorch para CPU (el mini PC no tiene tarjeta gráfica) fijado:
+# así ninguna librería lo cambia de versión y torchaudio sigue casando con él.
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt \
+RUN pip install --extra-index-url https://download.pytorch.org/whl/cpu -r /tmp/requirements.txt \
+    && python3 -c "import torch, torchaudio; print('torch', torch.__version__, 'torchaudio', torchaudio.__version__)" \
     && apt-get purge -y build-essential && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 COPY app /app
