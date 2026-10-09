@@ -3,6 +3,9 @@
 
 Necesita espeak-ng y ffmpeg. Escribe en `out_dir`: cancion.wav, letra_sincronizada.json,
 letra_sin_tiempos.json y verdad.json (cuándo empieza de verdad cada palabra).
+
+También cancion_coros.wav: la misma canción con lo que suele faltar en las letras publicadas,
+coros y «adlibs» que se cantan pero no están escritos (la verdad y las letras son las mismas).
 """
 import json
 import os
@@ -43,6 +46,7 @@ def main(out_dir):
     truth, synced, plain = [], [], []
     tmp = os.path.join(out_dir, "w.wav")
     prev_end = 0.0
+    spans = []
     for start, text in LINES:
         # Como en una canción: cada línea empieza cuando ha terminado la anterior (coros incluidos).
         t = max(start, prev_end + 0.8)
@@ -65,6 +69,7 @@ def main(out_dir):
                 first = t
             t += len(audio) / SR - onset + 0.12
             prev_end = t
+        spans.append((first, t))
         synced.append({"text": text, "start_ms": int(round(first * 1000))})
         plain.append({"text": text, "start_ms": None})
     # Música: acordes que cambian cada 2 s, un bajo y un ruido suave tipo platillos.
@@ -78,14 +83,30 @@ def main(out_dir):
         music[a:b] += 0.12 * np.sin(2 * np.pi * chords[k % 4][0] / 2 * tt[a:b])
     rng = np.random.default_rng(1)
     music += 0.02 * rng.standard_normal(len(music))
-    mix = lead + back + music
-    mix = mix / np.abs(mix).max() * 0.9
-    pcm = (mix * 32767).astype(np.int16)
-    with wave.open(os.path.join(out_dir, "cancion.wav"), "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(SR)
-        w.writeframes(pcm.tobytes())
+    # Lo que se canta sin estar en la letra: coros encima de dos líneas y un «adlib» de la voz
+    # principal en el hueco tras otras dos.
+    unwritten = np.zeros_like(lead)
+    for i in (1, 4):
+        a, b = spans[i]
+        audio, onset = speak("uh uh uh", "es", 75, tmp)
+        pos = int((a + 0.3 - onset) * SR)
+        end = min(len(unwritten), pos + len(audio))
+        unwritten[pos:end] += audio[: end - pos] * 0.5
+    for i in (0, 3):
+        _, b = spans[i]
+        audio, onset = speak("ay ay", "es", 40, tmp)
+        pos = int((b + 0.05 - onset) * SR)
+        end = min(len(unwritten), pos + len(audio))
+        unwritten[pos:end] += audio[: end - pos] * 0.8
+    for name, extra in (("cancion.wav", 0), ("cancion_coros.wav", 1)):
+        mix = lead + back + music + extra * unwritten
+        mix = mix / np.abs(mix).max() * 0.9
+        pcm = (mix * 32767).astype(np.int16)
+        with wave.open(os.path.join(out_dir, name), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(SR)
+            w.writeframes(pcm.tobytes())
     os.remove(tmp)
     json.dump(synced, open(os.path.join(out_dir, "letra_sincronizada.json"), "w"), ensure_ascii=False, indent=1)
     json.dump(plain, open(os.path.join(out_dir, "letra_sin_tiempos.json"), "w"), ensure_ascii=False, indent=1)

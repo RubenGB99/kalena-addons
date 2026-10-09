@@ -74,6 +74,24 @@ jobs:
           docker run --rm -e KALENA_DATA=/data -v "$PWD/modelos:/data/modelos" -v "$PWD/prueba:/work" kalena-letras \
             python3 -m kalena_letras.selftest /work/cancion.wav /work/letra_sin_tiempos.json /work/res_plano.json "$SEPARACION"
           python3 kalena_letras/tests/check_selftest.py prueba/res_plano.json prueba/verdad.json "sin tiempos" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Coros y «adlibs» sin escribir en la letra (sin comodín)
+        if: always()
+        run: |
+          docker run --rm -e KALENA_DATA=/data -e KALENA_COMODIN=0 -v "$PWD/modelos:/data/modelos" -v "$PWD/prueba:/work" kalena-letras \
+            python3 -m kalena_letras.selftest /work/cancion_coros.wav /work/letra_sincronizada.json /work/res_coros.json "$SEPARACION"
+          python3 kalena_letras/tests/check_selftest.py prueba/res_coros.json prueba/verdad.json "coros sin escribir, sin comodín" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Coros y «adlibs» sin escribir en la letra (con comodín)
+        if: always()
+        run: |
+          docker run --rm -e KALENA_DATA=/data -e KALENA_COMODIN=1 -v "$PWD/modelos:/data/modelos" -v "$PWD/prueba:/work" kalena-letras \
+            python3 -m kalena_letras.selftest /work/cancion_coros.wav /work/letra_sincronizada.json /work/res_coros_comodin.json "$SEPARACION"
+          python3 kalena_letras/tests/check_selftest.py prueba/res_coros_comodin.json prueba/verdad.json "coros sin escribir, con comodín" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Con comodín, canción normal (que no empeore)
+        if: always()
+        run: |
+          docker run --rm -e KALENA_DATA=/data -e KALENA_COMODIN=1 -v "$PWD/modelos:/data/modelos" -v "$PWD/prueba:/work" kalena-letras \
+            python3 -m kalena_letras.selftest /work/cancion.wav /work/letra_sincronizada.json /work/res_comodin.json "$SEPARACION"
+          python3 kalena_letras/tests/check_selftest.py prueba/res_comodin.json prueba/verdad.json "canción normal, con comodín" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Guardar resultados
         if: always()
         uses: actions/upload-artifact@v4
