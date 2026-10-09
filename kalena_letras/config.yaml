@@ -1,5 +1,5 @@
 name: Kalena Letras
-version: "0.1.7"
+version: "0.1.8"
 slug: kalena_letras
 description: Pone con IA el tiempo de cada palabra a las letras de tu Jellyfin, para verlas como karaoke en Kalena.
 url: https://github.com/RubenGB99/kalena-addons

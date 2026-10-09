@@ -25,7 +25,7 @@ from .jellyfin import Jellyfin, JellyfinError
 from .separate import Separator
 from .timing import MIN_LINE_CONFIDENCE, Voice, line_windows, time_lines
 
-VERSION = "0.1.7"
+VERSION = "0.1.8"
 OPTIONS = os.environ.get("KALENA_OPTIONS", "/data/options.json")
 DATA = os.environ.get("KALENA_DATA", "/data")
 SHARE = os.environ.get("KALENA_SHARE", "/share/kalena_letras")

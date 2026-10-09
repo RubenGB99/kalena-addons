@@ -1,0 +1,75 @@
+name: Precisión del móvil
+
+# Mide la precisión de «Sincronizar palabras con IA» con los modelos ya publicados para Kalena
+# (sin volver a exportarlos): la canción sintética con tiempos conocidos, con y sin tiempos de
+# línea y con coros sin escribir. «antes» usa el alineador del commit anterior, para comparar.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  medir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [antes, ahora]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Alineador del commit anterior
+        if: matrix.version == 'antes'
+        run: git checkout HEAD~1 -- kalena_letras/app
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Paquetes del sistema
+        timeout-minutes: 8
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update -qq
+          sudo apt-get -o Acquire::Retries=3 install -y -qq --no-install-recommends espeak-ng ffmpeg
+      - name: Dependencias
+        run: pip install --extra-index-url https://download.pytorch.org/whl/cpu -r kalena_letras/requirements.txt
+      - name: Modelos publicados (int8)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download modelos-movil-v1-int8 -D salida
+      - name: Canción sintética con tiempos conocidos
+        run: python kalena_letras/tests/make_synthetic_song.py "$PWD/prueba"
+      - name: Con tiempos de línea
+        if: always()
+        run: |
+          python movil/referencia.py salida int8 prueba/cancion.wav prueba/letra_sincronizada.json prueba/r1.json
+          python kalena_letras/tests/check_selftest.py prueba/r1.json prueba/verdad.json "${{ matrix.version }}: con tiempos de línea" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Sin tiempos de línea
+        if: always()
+        run: |
+          python movil/referencia.py salida int8 prueba/cancion.wav prueba/letra_sin_tiempos.json prueba/r2.json
+          python kalena_letras/tests/check_selftest.py prueba/r2.json prueba/verdad.json "${{ matrix.version }}: sin tiempos de línea" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Coros sin escribir
+        if: always()
+        run: |
+          python movil/referencia.py salida int8 prueba/cancion_coros.wav prueba/letra_sincronizada.json prueba/r3.json
+          python kalena_letras/tests/check_selftest.py prueba/r3.json prueba/verdad.json "${{ matrix.version }}: coros sin escribir" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Tiempos palabra a palabra
+        if: always()
+        run: |
+          python - <<'EOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json
+          truth = json.load(open("prueba/verdad.json"))
+          for name in ("r1", "r2", "r3"):
+              try:
+                  words = json.load(open(f"prueba/{name}.json"))["words"]
+              except FileNotFoundError:
+                  continue
+              print(f"\n{name} (palabra: verdad → IA, diferencia en ms)\n")
+              for t, w in zip(truth, words):
+                  got = w["start_ms"]
+                  diff = "—" if got is None else f"{got - t['start_ms']:+d}"
+                  print(f"- {t['text']}: {t['start_ms']} → {got} ({diff})")
+          EOF

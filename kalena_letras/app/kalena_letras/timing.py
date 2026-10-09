@@ -14,7 +14,7 @@ from typing import Callable
 
 import numpy as np
 
-from .align import ENERGY_HOP_MS, refine_start, viterbi, word_timings
+from .align import ENERGY_HOP_MS, refine_start, skip_silence, viterbi, word_timings
 from .lyrics import Line, Word
 
 # Confianza mínima (media de las letras) para dar por buenas las palabras de una línea. Se ajusta
@@ -80,7 +80,9 @@ def _apply(pairs, voice: Voice, earliest_ms: int):
     """Copia los tiempos a las palabras con el ajuste fino y sin solaparse."""
     prev = earliest_ms
     for word, t in pairs:
-        start = refine_start(t.start_ms, voice.energy, earliest_ms=prev, hop_ms=ENERGY_HOP_MS)
+        # Primero, fuera del silencio si la IA se ha adelantado; luego, el ajuste fino al arranque.
+        start = skip_silence(t.start_ms, t.end_ms, voice.energy, hop_ms=ENERGY_HOP_MS)
+        start = refine_start(start, voice.energy, earliest_ms=prev, hop_ms=ENERGY_HOP_MS)
         start = max(start, prev)
         end = max(t.end_ms, start + MIN_WORD_MS)
         word.start_ms, word.end_ms, word.confidence = start, end, t.confidence

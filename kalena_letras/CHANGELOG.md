@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.1.8
+- Si la IA pone el comienzo de una palabra donde la voz aún está en silencio (se adelanta), lo
+  lleva a donde la voz arranca de verdad. Las palabras que ya estaban bien no cambian.
+
 ## 0.1.7
 - Si la canción no tiene letra en Jellyfin, la busca en LRCLIB (lrclib.net, la misma fuente externa
   que Kalena): primero la coincidencia exacta y, si no, la de duración más parecida (3 s como

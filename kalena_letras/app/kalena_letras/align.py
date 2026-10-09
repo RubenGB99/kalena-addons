@@ -157,6 +157,36 @@ def refine_start(start_ms: int, energy: np.ndarray, earliest_ms: int, hop_ms: in
     return start_ms
 
 
+def skip_silence(start_ms: int, end_ms: int, energy: np.ndarray, hop_ms: int = ENERGY_HOP_MS,
+                 min_rise_db: float = 15.0, min_shift_ms: int = 60, min_word_ms: int = 60) -> int:
+    """Si la IA ha puesto el comienzo de una palabra donde la voz aún está en silencio, lo lleva a
+    donde la voz arranca de verdad (dentro de la propia palabra).
+
+    Solo actúa si el comienzo está claramente en silencio: lo que suena en sus primeros 30 ms está
+    por debajo del 40 % (en dB) entre el silencio y el pico de la palabra, con al menos 15 dB de
+    diferencia. Si la voz ya suena ahí, no cambia nada.
+    """
+    n = energy.size
+    i0 = int(start_ms / hop_ms)
+    i1 = min(n, int(end_ms / hop_ms))
+    if i1 - i0 < 4:
+        return start_ms
+    span = energy[i0:i1]
+    peak, floor = float(span.max()), float(span.min())
+    if peak - floor < min_rise_db:
+        return start_ms
+    threshold = floor + 0.4 * (peak - floor)
+    if float(span[:3].mean()) >= threshold:
+        return start_ms
+    for k in range(span.size - 1):
+        if span[k] >= threshold and span[k + 1] >= threshold:
+            new = (i0 + k) * hop_ms
+            if new - start_ms < min_shift_ms:
+                return start_ms
+            return int(min(new, max(start_ms, end_ms - min_word_ms)))
+    return start_ms
+
+
 # ---------------------------------------------------------------- the model
 
 class EmissionModel:

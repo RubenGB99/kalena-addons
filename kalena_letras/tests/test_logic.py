@@ -7,7 +7,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
 from kalena_letras import lyrics  # noqa: E402
-from kalena_letras.align import energy_db, refine_start, viterbi, word_timings  # noqa: E402
+from kalena_letras.align import energy_db, refine_start, skip_silence, viterbi, word_timings  # noqa: E402
 from kalena_letras.timing import Voice, time_lines  # noqa: E402
 
 LETTERS = "abcdefghijklmnopqrstuvwxyz'"
@@ -93,6 +93,22 @@ def test_refine_moves_start_to_the_onset():
     # Sin subida clara (voz continua), no se toca.
     flat = energy_db(np.full(sr * 2, 0.3), sr)
     assert refine_start(1000, flat, earliest_ms=0) == 1000
+
+
+def test_skip_silence_moves_an_early_start_to_the_voice():
+    sr = 16_000
+    x = np.zeros(sr * 3)
+    x[int(1.6 * sr):int(2.4 * sr)] = 0.5 * np.sin(np.arange(int(0.8 * sr)) * 0.1)
+    e = energy_db(x, sr)
+    # La IA puso la palabra 0,6 s antes de que se cante: pasa a donde arranca la voz.
+    assert abs(skip_silence(1000, 2300, e) - 1600) <= 20
+    # Si la voz ya suena donde la puso, no se toca.
+    assert skip_silence(1650, 2300, e) == 1650
+    # Voz continua (palabra ligada a la anterior): no se toca.
+    flat = energy_db(np.full(sr * 3, 0.3), sr)
+    assert skip_silence(1000, 2300, flat) == 1000
+    # Nunca deja la palabra sin sitio: como mucho, 60 ms antes de su final.
+    assert skip_silence(1000, 1620, e) <= 1560
 
 
 def test_time_lines_synced_lead_and_backing():
