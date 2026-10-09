@@ -158,3 +158,31 @@ def test_backing_word_without_voice_in_its_track_gets_no_time():
     assert lines[0].timed and lines[0].words[2].start_ms is None
     assert lyrics.write_lrc(lines) == "[00:01.00]<00:01.00>Hola <00:01.50>mundo (oh)<00:01.78>\n"
 
+
+
+def test_search_song_falls_back_and_lists_similar():
+    from kalena_letras.jellyfin import Jellyfin
+    library = [
+        {"Id": "a1", "Name": "SUENO MOJADITO", "Artists": ["DANNA"]},
+        {"Id": "a2", "Name": "Otra cancion", "Artists": ["DANNA"]},
+    ]
+    asked = []
+
+    class Fake(Jellyfin):
+        def __init__(self):
+            pass
+
+        def _json(self, method, path, params=None, body=None):
+            term = params["searchTerm"]
+            asked.append(term)
+            # Jellyfin busca el texto tal cual: con la tilde no sale.
+            return {"Items": [it for it in library if term.lower() in it["Name"].lower() or term in it["Artists"]]}
+
+    jf = Fake()
+    song, _ = jf.search_song("u", "DANNA - SUEÑO MOJADITO")
+    assert song["Id"] == "a1"
+    assert asked[0] == "SUEÑO MOJADITO" and asked[1] == "sueno mojadito"
+    asked.clear()
+    song, similar = jf.search_song("u", "DANNA - Cancion inventada")
+    assert song is None
+    assert {it["Id"] for it in similar} == {"a1", "a2"}

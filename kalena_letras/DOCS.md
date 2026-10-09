@@ -24,7 +24,9 @@ volver a la original desde Kalena: «Editar letra» → «Recuperar original»).
    - **Clave de API**: la del paso 1 (solo se guarda en Home Assistant).
    - **Usuario**: el usuario de Jellyfin con el que se entra en Kalena.
    - **Canciones**: 3 o 4 canciones de estilos distintos, una por línea, como
-     `DANNA - SUEÑO MOJADITO`. Tienen que tener ya la letra en Jellyfin.
+     `DANNA - SUEÑO MOJADITO`. Tienen que tener ya la letra en Jellyfin. Si alguna no la encuentra,
+     el registro dice lo más parecido que ve ese usuario, con su id; también se puede poner el id
+     directamente (sale al final de la dirección de la canción en la web de Jellyfin, `id=…`).
    - **Separación de voces**: `maxima` (recomendada para la prueba).
 3. **Iniciar** el complemento y mirar la pestaña **Registro**.
 

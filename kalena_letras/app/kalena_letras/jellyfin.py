@@ -71,17 +71,21 @@ class Jellyfin:
 
     def find_song(self, user_id: str, query: str) -> dict | None:
         """Una canción por su id de Jellyfin o por «Artista - Título» (o solo el título)."""
+        return self.search_song(user_id, query)[0]
+
+    def search_song(self, user_id: str, query: str) -> tuple[dict | None, list[dict]]:
+        """La canción de `query` (o None) y las más parecidas que ve el usuario, para el registro.
+
+        Si con el título tal cual no aparece, prueba sin tildes ni signos y con el artista: Jellyfin
+        busca por el texto exacto, y un título guardado algo distinto (o sin etiquetas, con el
+        nombre del archivo) no saldría.
+        """
         q = query.strip()
         if re.fullmatch(r"[0-9a-fA-F-]{32,36}", q):
-            return self.item(user_id, q.replace("-", ""))
+            return self.item(user_id, q.replace("-", "")), []
         artist, title = (q.split(" - ", 1) + [""])[:2] if " - " in q else ("", q)
         if not title:
             artist, title = "", q
-        res = self._json("GET", "/Items", {
-            "userId": user_id, "searchTerm": title, "includeItemTypes": "Audio", "recursive": "true",
-            "fields": "Path", "limit": "50",
-        }) or {}
-        items = res.get("Items") or []
         want_t, want_a = _simple(title), _simple(artist)
 
         def score(it):
@@ -90,14 +94,25 @@ class Jellyfin:
             s = 0
             if name == want_t:
                 s += 2
-            elif want_t and want_t in name:
+            elif want_t and (want_t in name or want_t.replace(" ", "") in name.replace(" ", "")):
                 s += 1
             if want_a and want_a in artists:
                 s += 2
             return s
 
-        items.sort(key=score, reverse=True)
-        return items[0] if items and score(items[0]) >= (3 if want_a else 2) else None
+        need = 3 if want_a else 2
+        found: dict[str, dict] = {}
+        for term in dict.fromkeys(t for t in (title, want_t, artist) if t):
+            res = self._json("GET", "/Items", {
+                "userId": user_id, "searchTerm": term, "includeItemTypes": "Audio", "recursive": "true",
+                "fields": "Path", "limit": "50",
+            }) or {}
+            for it in res.get("Items") or []:
+                found.setdefault(it["Id"], it)
+            items = sorted(found.values(), key=score, reverse=True)
+            if items and score(items[0]) >= need:
+                return items[0], []
+        return None, sorted(found.values(), key=score, reverse=True)[:3]
 
     def item(self, user_id: str, item_id: str) -> dict:
         return self._json("GET", f"/Items/{item_id}", {"userId": user_id})

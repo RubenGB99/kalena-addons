@@ -293,10 +293,18 @@ def main() -> int:
     for query in songs:
         log.info("Canción: %s", query)
         try:
-            song = jf.find_song(user_id, query)
+            song, similar = jf.search_song(user_id, query)
             if not song:
                 summary.append({"cancion": query, "resultado": "no encontrada en Jellyfin (revisa «Artista - Título»)"})
-                log.warning("  · No encontrada en Jellyfin.")
+                if similar:
+                    names = "; ".join("«%s» de %s (id %s)" % (it.get("Name", "?"), ", ".join(it.get("Artists") or []) or "?", it["Id"])
+                                      for it in similar)
+                    log.warning("  · No encontrada. Lo más parecido que ve el usuario %s: %s. Escribe el título "
+                                "como sale ahí o pon directamente su id.", user, names)
+                else:
+                    log.warning("  · No encontrada: el usuario %s no ve ninguna canción parecida. Comprueba que tiene "
+                                "acceso a la biblioteca donde está, o pon el id de la canción (sale en la dirección "
+                                "de la canción en la web de Jellyfin: ...id=XXXX).", user)
                 continue
             if song["Id"] in state and not opts.get("repetir"):
                 summary.append({"cancion": query, "resultado": "ya procesada antes (activa «repetir» para rehacerla)"})
