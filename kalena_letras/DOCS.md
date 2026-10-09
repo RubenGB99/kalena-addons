@@ -28,8 +28,9 @@ volver a la original desde Kalena: «Editar letra» → «Recuperar original»).
    - **Separación de voces**: `maxima` (recomendada para la prueba).
 3. **Iniciar** el complemento y mirar la pestaña **Registro**.
 
-La primera vez descarga los modelos de IA (unos 2-3 GB, una sola vez; no entran en las copias de
-seguridad). Con un Intel N100, cada canción puede tardar **entre 8 y 15 minutos**.
+La primera vez Home Assistant construye el complemento (unos 10 minutos) y descarga los modelos de
+IA (unos 2,5 GB, una sola vez; no entran en las copias de seguridad). Con un Intel N100, cada
+canción de 3-4 minutos tarda **unos 10-15 minutos**, algo más si tiene coros entre paréntesis.
 
 ## Resultados
 
