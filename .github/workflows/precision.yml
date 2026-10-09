@@ -13,18 +13,15 @@ permissions:
 jobs:
   medir:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        version: [antes, ahora]
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
-      - name: Alineador del commit anterior
-        if: matrix.version == 'antes'
-        run: git checkout HEAD~1 -- kalena_letras/app
+          fetch-depth: 0
+      # «antes» = el alineador anterior a «palabras que no empiezan en silencio»; las dos versiones
+      # en la misma máquina (la separación de voces varía un poco de un procesador a otro).
+      - name: Alineador anterior
+        run: git worktree add antes 243d1bb56fd7fe38a2f1fc9c303557ff7f475e60
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -41,21 +38,18 @@ jobs:
         run: gh release download modelos-movil-v1-int8 -D salida
       - name: Canción sintética con tiempos conocidos
         run: python kalena_letras/tests/make_synthetic_song.py "$PWD/prueba"
-      - name: Con tiempos de línea
-        if: always()
+      - name: Medir
         run: |
-          python movil/referencia.py salida int8 prueba/cancion.wav prueba/letra_sincronizada.json prueba/r1.json
-          python kalena_letras/tests/check_selftest.py prueba/r1.json prueba/verdad.json "${{ matrix.version }}: con tiempos de línea" | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Sin tiempos de línea
-        if: always()
-        run: |
-          python movil/referencia.py salida int8 prueba/cancion.wav prueba/letra_sin_tiempos.json prueba/r2.json
-          python kalena_letras/tests/check_selftest.py prueba/r2.json prueba/verdad.json "${{ matrix.version }}: sin tiempos de línea" | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Coros sin escribir
-        if: always()
-        run: |
-          python movil/referencia.py salida int8 prueba/cancion_coros.wav prueba/letra_sincronizada.json prueba/r3.json
-          python kalena_letras/tests/check_selftest.py prueba/r3.json prueba/verdad.json "${{ matrix.version }}: coros sin escribir" | tee -a "$GITHUB_STEP_SUMMARY"
+          for v in antes ahora; do
+            code=$([ "$v" = antes ] && echo antes || echo .)
+            for c in "r1 cancion.wav letra_sincronizada.json con-tiempos-de-línea" \
+                     "r2 cancion.wav letra_sin_tiempos.json sin-tiempos-de-línea" \
+                     "r3 cancion_coros.wav letra_sincronizada.json coros-sin-escribir"; do
+              set -- $c
+              python "$code/movil/referencia.py" salida int8 "prueba/$2" "prueba/$3" "prueba/$v-$1.json"
+              python kalena_letras/tests/check_selftest.py "prueba/$v-$1.json" prueba/verdad.json "$v: $4" | tee -a "$GITHUB_STEP_SUMMARY"
+            done
+          done
       - name: Tiempos palabra a palabra
         if: always()
         run: |
@@ -63,13 +57,17 @@ jobs:
           import json
           truth = json.load(open("prueba/verdad.json"))
           for name in ("r1", "r2", "r3"):
-              try:
-                  words = json.load(open(f"prueba/{name}.json"))["words"]
-              except FileNotFoundError:
-                  continue
-              print(f"\n{name} (palabra: verdad → IA, diferencia en ms)\n")
-              for t, w in zip(truth, words):
-                  got = w["start_ms"]
-                  diff = "—" if got is None else f"{got - t['start_ms']:+d}"
-                  print(f"- {t['text']}: {t['start_ms']} → {got} ({diff})")
+              runs = {}
+              for v in ("antes", "ahora"):
+                  try:
+                      runs[v] = json.load(open(f"prueba/{v}-{name}.json"))["words"]
+                  except FileNotFoundError:
+                      pass
+              print(f"\n{name}: palabra, verdad, antes, ahora (ms de diferencia)\n")
+              for k, t in enumerate(truth):
+                  cols = []
+                  for v in ("antes", "ahora"):
+                      w = runs.get(v, [None] * len(truth))[k]
+                      cols.append("—" if not w or w["start_ms"] is None else f"{w['start_ms'] - t['start_ms']:+d}")
+                  print(f"- {t['text']} ({t['start_ms']}): {cols[0]} → {cols[1]}")
           EOF
