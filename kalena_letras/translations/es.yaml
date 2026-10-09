@@ -1,0 +1,22 @@
+configuration:
+  jellyfin_url:
+    name: Dirección de Jellyfin
+    description: Normalmente http://172.30.32.1:8096 (Jellyfin como complemento en este mismo Home Assistant).
+  clave_api:
+    name: Clave de API de Jellyfin
+    description: Créala en Jellyfin → Panel de control → Claves de API. Solo se guarda aquí.
+  usuario:
+    name: Tu usuario de Jellyfin
+    description: El mismo con el que entras en Kalena (para que «Recuperar letra original» funcione).
+  canciones:
+    name: Canciones
+    description: Una por línea, como «Artista - Título» (o solo el título).
+  separacion:
+    name: Separación de voces
+    description: «maxima» es la más precisa (más lenta); «rapida» tarda bastante menos pero separa peor.
+  guardar_en_jellyfin:
+    name: Guardar en Jellyfin
+    description: Si se desactiva, solo deja el resultado en /share/kalena_letras para revisarlo.
+  repetir:
+    name: Repetir
+    description: Vuelve a procesar canciones ya hechas o que ya tenían tiempos por palabra.

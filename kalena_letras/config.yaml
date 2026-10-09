@@ -1,0 +1,37 @@
+name: Kalena Letras
+version: "0.1.0"
+slug: kalena_letras
+description: Pone con IA el tiempo de cada palabra a las letras de tu Jellyfin, para verlas como karaoke en Kalena.
+url: https://github.com/RubenGB99/kalena-addons
+arch:
+  - amd64
+init: false
+startup: application
+boot: manual
+map:
+  - share:rw
+# Los modelos de IA (unos 2-3 GB) y los archivos de trabajo no van en las copias de seguridad.
+backup_exclude:
+  - "modelos"
+  - "modelos/*"
+  - "modelos/**"
+  - "trabajo"
+  - "trabajo/*"
+  - "trabajo/**"
+options:
+  jellyfin_url: "http://172.30.32.1:8096"
+  clave_api: ""
+  usuario: ""
+  canciones: []
+  separacion: maxima
+  guardar_en_jellyfin: true
+  repetir: false
+schema:
+  jellyfin_url: url
+  clave_api: password
+  usuario: str
+  canciones:
+    - str
+  separacion: list(maxima|rapida)
+  guardar_en_jellyfin: bool
+  repetir: bool
