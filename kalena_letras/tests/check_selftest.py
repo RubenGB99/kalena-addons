@@ -21,7 +21,9 @@ lead_total = sum(1 for t in truth if not t["backing"])
 for w, t in zip(words, truth):
     err = "—" if w["start_ms"] is None else "%+d ms" % (w["start_ms"] - t["start_ms"])
     print(f'   {"coro " if t["backing"] else "     "}{t["text"]:12} real {t["start_ms"]:6}  IA {str(w["start_ms"]):6}  {err:>9}  conf {w["confidence"]}')
-print(f"== {label}: voces {result['voices']}, separación {result['separation_s']} s, alineación {result['alignment_s']} s")
+rep = result["report"]
+print(f"== {label}: voces {result['voices']}, separación {result['separation_s']} s, alineación {result['alignment_s']} s, "
+      f"voz completa de {rep.get('vocals_seconds', 0)} s de trozos, coros sacados de la voz completa: {rep.get('backing_from_full', 0)}")
 print(f"   voz principal: {len(lead_err)}/{lead_total} palabras con tiempo")
 if lead_err:
     within = sum(1 for e in lead_err if e <= 150) / len(lead_err)

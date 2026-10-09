@@ -103,9 +103,9 @@ def test_whole_flow(tmp_path, monkeypatch):
             em = {"a": em_back, "b": em_lead}[path]  # la voz principal llega como «b»
             return Voice(name, em, 20.0, np.full(700, -60.0))
 
-        def voice_from_samples(self, name, samples):
-            assert name == "coros"
-            return Voice(name, em_back, 20.0, np.full(700, -60.0))
+        def voice_on_parts(self, name, samples, parts, layout, length):
+            assert name in ("coros", "voz_completa")
+            return Voice(name, em_back if name == "coros" else em_lead, 20.0, np.full(700, -60.0))
 
         def emission_model(self):
             return type("Mdl", (), {"token_ids": staticmethod(ids)})()
@@ -138,3 +138,16 @@ def test_whole_flow(tmp_path, monkeypatch):
     log_text = json.dumps(summary)
     assert "clave-secreta" not in log_text
     server.shutdown()
+
+
+def test_parts_layout_cut_and_scatter():
+    layout = M._layout([(1000, 2000), (1500, 3000), (8000, 9000)], 10_000)
+    assert layout == [(1000, 3000, 0.0), (8000, 9000, 3000.0)]
+    rate = 100
+    x = np.arange(1000, dtype=np.float32)  # 10 s a 100 Hz
+    parts = M._cut(x, rate, layout)
+    assert parts.size == (200 + 100) + (100 + 100)
+    back = M._scatter(parts, rate, layout, x.size)
+    assert np.array_equal(back[100:300], x[100:300]) and np.array_equal(back[800:900], x[800:900])
+    assert back[500] == 0 and back[950] == 0
+

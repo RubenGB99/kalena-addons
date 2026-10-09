@@ -6,6 +6,7 @@ Deja también en /share/kalena_letras el LRC y un informe por canción.
 """
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
@@ -14,12 +15,14 @@ import sys
 import time
 import traceback
 
+import numpy as np
+
 from . import lyrics as L
 from .align import SAMPLE_RATE, EmissionModel, energy_db
-from .audio import duration_s, read_mono, to_wav
+from .audio import duration_s, read_mono, read_stereo, to_wav, write_wav
 from .jellyfin import Jellyfin, JellyfinError
 from .separate import Separator
-from .timing import Voice, time_lines
+from .timing import MIN_LINE_CONFIDENCE, Voice, line_windows, time_lines
 
 VERSION = "0.1.0"
 OPTIONS = os.environ.get("KALENA_OPTIONS", "/data/options.json")
@@ -72,9 +75,67 @@ class Aligner:
         em, frame_ms = self.emission_model().emissions(samples)
         return Voice(name, em, frame_ms, energy_db(samples))
 
+    def voice_on_parts(self, name: str, samples, parts, layout, length: int) -> Voice:
+        """Una voz de la que solo hay trozos: el modelo escucha solo los trozos (mucho menos trabajo)
+        y fuera de ellos se marca silencio."""
+        em_parts, frame_ms = self.emission_model().emissions(parts)
+        frames = max(1, int(round(length / SAMPLE_RATE * 1000 / frame_ms)))
+        em = np.full((frames, em_parts.shape[1]), -30.0, dtype=np.float32)
+        em[:, 0] = 0.0  # silencio («blank»)
+        for a, b, off in layout:
+            i, j, k = int(a / frame_ms), int(b / frame_ms), int(off / frame_ms)
+            n = max(0, min(j - i, em_parts.shape[0] - k, frames - i))
+            em[i:i + n] = em_parts[k:k + n]
+        return Voice(name, em, frame_ms, energy_db(samples))
+
+
+GAP_MS = 1_000
+
+
+def _layout(windows_ms: list[tuple[float, float]], total_ms: float):
+    """Junta las ventanas que se solapan y las coloca una tras otra con 1 s de silencio entre medias."""
+    merged = []
+    for a, b in sorted((max(0.0, a), min(total_ms, b)) for a, b in windows_ms):
+        if merged and a <= merged[-1][1] + GAP_MS:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    layout, offset = [], 0.0
+    for a, b in merged:
+        layout.append((a, b, offset))
+        offset += (b - a) + GAP_MS
+    return layout
+
+
+def _cut(samples, rate: int, layout) -> "np.ndarray":
+    """Los trozos de `samples` (mono o (n, canales)) según `layout`, uno tras otro con silencio."""
+    gap = int(GAP_MS * rate / 1000)
+    parts = []
+    for a, b, _ in layout:
+        parts.append(samples[int(a * rate / 1000):int(b * rate / 1000)])
+        parts.append(np.zeros((gap,) + samples.shape[1:], dtype=samples.dtype))
+    return np.concatenate(parts) if parts else samples[:0]
+
+
+def _scatter(parts, rate: int, layout, length: int):
+    """Lo contrario de `_cut`: cada trozo vuelve a su sitio en un audio de `length` muestras."""
+    out = np.zeros(length, dtype=np.float32)
+    for a, b, off in layout:
+        i, j = int(a * rate / 1000), int(b * rate / 1000)
+        k = int(off * rate / 1000)
+        n = min(j - i, max(0, parts.size - k))
+        out[i:i + n] = parts[k:k + n]
+    return out
+
 
 def align_audio(aligner: "Aligner", mix_wav: str, lines: list, synced: bool, work: str):
-    """Separa las voces de `mix_wav` y pone tiempos por palabra a `lines`. Devuelve (informe, confianzas, s separando, s alineando)."""
+    """Separa las voces de `mix_wav` y pone tiempos por palabra a `lines`. Devuelve (informe, confianzas, s separando, s alineando).
+
+    1. Karaoke sobre la canción entera: la voz principal (imprescindible).
+    2. Primera pasada solo con la voz principal.
+    3. Solo para las líneas con coros escritos o que no quedaron claras: se separa la voz completa
+       de esos trozos (no de toda la canción, que es lo más lento) y se repite con ella.
+    """
     t_sep = 0.0
     log.info("  · Separando la voz principal del resto (música y coros)…")
     t = time.time()
@@ -91,32 +152,37 @@ def align_audio(aligner: "Aligner", mix_wav: str, lines: list, synced: bool, wor
     score = {v.name: _global_conf(lines, v, model.token_ids) for v in (a, b)}
     lead = a if score["voz_a"] >= score["voz_b"] else b
     lead.name = "principal"
-    lead_path = path_a if lead is a else path_b
-    cache = {}
+    lead_samples = read_mono(path_a if lead is a else path_b, SAMPLE_RATE)
 
-    def vocals_samples():
-        """La voz completa: se separa solo la primera vez que hace falta."""
-        nonlocal t_sep
-        if "voz" not in cache:
-            log.info("  · Separando la voz completa (para los coros)…")
-            t0 = time.time()
-            cache["voz"] = read_mono(aligner.separator.vocals(mix_wav, out_dir), SAMPLE_RATE)
-            t_sep += time.time() - t0
-        return cache["voz"]
+    first = copy.deepcopy(lines)
+    report = time_lines(first, lead, None, lambda: None, model.token_ids, synced)
+    unclear = {e["index"] for e in report["lines"] if e["confidence"] < MIN_LINE_CONFIDENCE + 0.15}
+    need = unclear | {i for i, l in enumerate(lines) if l.backing_words}
+    windows = line_windows(lines, lead, model.token_ids, synced)
+    wanted = [windows[i] for i in sorted(need) if i in windows]
+    if not wanted:
+        lines[:] = first
+        return report, score, t_sep, time.time() - t_align0
 
-    def full():
-        if "full" not in cache:
-            cache["full"] = aligner.voice_from_samples("voz_completa", vocals_samples())
-        return cache["full"]
+    layout = _layout(wanted, lead.duration_ms)
+    seconds = sum(b - a for a, b, _ in layout) / 1000
+    log.info("  · Separando la voz completa de %d trozos (%.0f s) para coros y líneas dudosas…", len(layout), seconds)
+    t = time.time()
+    stereo = read_stereo(mix_wav, 44_100)
+    parts_wav = os.path.join(work, "trozos.wav")
+    write_wav(parts_wav, _cut(stereo, 44_100, layout), 44_100)
+    vocals_parts = read_mono(aligner.separator.vocals(parts_wav, os.path.join(work, "voces_trozos")), SAMPLE_RATE)
+    t_sep += time.time() - t
 
-    backing = None
-    if any(l.backing_words for l in lines):
-        voz = vocals_samples()
-        principal = read_mono(lead_path, SAMPLE_RATE)
-        n = min(voz.size, principal.size)
-        backing = aligner.voice_from_samples("coros", voz[:n] - principal[:n])
-
-    report = time_lines(lines, lead, backing, full, model.token_ids, synced)
+    length = lead_samples.size
+    vocals = _scatter(vocals_parts, SAMPLE_RATE, layout, length)
+    full = aligner.voice_on_parts("voz_completa", vocals, vocals_parts, layout, length)
+    lead_parts = _cut(lead_samples, SAMPLE_RATE, layout)
+    n = min(vocals_parts.size, lead_parts.size)
+    backing_parts = vocals_parts[:n] - lead_parts[:n]
+    backing = aligner.voice_on_parts("coros", _scatter(backing_parts, SAMPLE_RATE, layout, length), backing_parts, layout, length)
+    report = time_lines(lines, lead, backing, lambda: full, model.token_ids, synced)
+    report["vocals_seconds"] = round(seconds)
     return report, score, t_sep, time.time() - t_align0
 
 

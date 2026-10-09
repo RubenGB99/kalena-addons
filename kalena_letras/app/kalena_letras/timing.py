@@ -139,14 +139,18 @@ def global_line_starts(lines: list[Line], voice: Voice, token_ids) -> dict[int, 
     return starts
 
 
+def line_windows(lines: list[Line], lead: Voice, token_ids, synced: bool) -> dict[int, tuple[float, float]]:
+    """Dónde va cada línea en la canción (con margen): por su tiempo o, sin tiempos, alineando toda la letra."""
+    global_starts = None if synced else global_line_starts(lines, lead, token_ids)
+    return _windows(lines, lead.duration_ms, global_starts)
+
+
 def time_lines(lines: list[Line], lead: Voice, backing: Voice | None, full: Callable[[], Voice | None],
                token_ids: Callable[[str], list[int]], synced: bool) -> dict:
     """Pone tiempos por palabra a `lines` (las modifica). Devuelve un resumen para el informe."""
-    total = lead.duration_ms
-    global_starts = None if synced else global_line_starts(lines, lead, token_ids)
-    windows = _windows(lines, total, global_starts)
+    windows = line_windows(lines, lead, token_ids, synced)
     full_voice: Voice | None = None
-    report = {"lines": [], "fallback_full": 0, "timed": 0, "total": 0}
+    report = {"lines": [], "fallback_full": 0, "backing_from_full": 0, "timed": 0, "total": 0}
     order = [i for i in sorted(windows) if lines[i].lead_words]
     for n, i in enumerate(order):
         line = lines[i]
@@ -179,13 +183,26 @@ def time_lines(lines: list[Line], lead: Voice, backing: Voice | None, full: Call
             wa, wb = windows[i]
             _apply(res[0], voice, earliest_ms=int(max(0, wa)))
             # Coros: sobre su propia voz, dentro de la ventana de la línea.
-            if backing is not None and line.backing_words:
-                bres = _align_words(backing, line.backing_words, token_ids, wa, wb)
-                if bres and bres[1] >= MIN_BACKING_CONFIDENCE:
-                    first_lead = min(w.start_ms for w in line.lead_words if w.start_ms is not None)
-                    _apply_backing(bres[0], backing, earliest_ms=max(int(wa), first_lead - 300))
+            if line.backing_words:
+                first_lead = min(w.start_ms for w in line.lead_words if w.start_ms is not None)
+                earliest = max(int(wa), first_lead - 300)
+                if backing is not None:
+                    bres = _align_words(backing, line.backing_words, token_ids, wa, wb)
+                    if bres and bres[1] >= MIN_BACKING_CONFIDENCE:
+                        _apply_backing(bres[0], backing, earliest_ms=earliest)
+                # Si en la pista de coros no estaban (el modelo los dejó con la voz principal), se busca
+                # la línea entera, en su orden, sobre la voz completa y se toman de ahí los coros.
+                missing = [w for w in line.backing_words if w.start_ms is None]
+                if missing:
+                    if full_voice is None:
+                        full_voice = full()
+                    if full_voice is not None:
+                        fres = _align_words(full_voice, line.words, token_ids, wa, wb)
+                        if fres:
+                            pairs = [(w, t) for w, t in fres[0] if any(w is m for m in missing)]
+                            report["backing_from_full"] += _apply_backing(pairs, full_voice, earliest_ms=earliest)
             line.timed = True
             line.confidence = conf
             report["timed"] += 1
-        report["lines"].append({"line": line.text, "confidence": round(conf, 3), "voice": used, "timed": ok})
+        report["lines"].append({"index": i, "line": line.text, "confidence": round(conf, 3), "voice": used, "timed": ok})
     return report
