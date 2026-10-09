@@ -48,7 +48,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Construir la imagen (igual que en Home Assistant)
-        run: docker build -t kalena-letras ./kalena_letras
+        # El Supervisor pasa su imagen base (Alpine) como BUILD_FROM: se construye igual para que
+        # cualquier dependencia de esa variable se note aquí y no en casa.
+        run: docker build --build-arg BUILD_FROM=ghcr.io/home-assistant/base:latest -t kalena-letras ./kalena_letras
       - name: Canción sintética con tiempos conocidos
         run: |
           sudo apt-get -o Acquire::Retries=3 update -qq

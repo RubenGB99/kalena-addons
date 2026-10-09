@@ -1,5 +1,6 @@
-ARG BUILD_FROM=python:3.11-slim-bookworm
-FROM ${BUILD_FROM}
+# Imagen fija de Python sobre Debian (con apt-get). No se usa BUILD_FROM: el Supervisor de Home
+# Assistant (2026.09) ignora build.yaml y pasaría su imagen base, que es Alpine y no tiene apt-get.
+FROM python:3.11-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
