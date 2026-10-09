@@ -18,6 +18,9 @@ for w, t in zip(words, truth):
         continue
     (back_err if t["backing"] else lead_err).append(abs(w["start_ms"] - t["start_ms"]))
 lead_total = sum(1 for t in truth if not t["backing"])
+for w, t in zip(words, truth):
+    err = "—" if w["start_ms"] is None else "%+d ms" % (w["start_ms"] - t["start_ms"])
+    print(f'   {"coro " if t["backing"] else "     "}{t["text"]:12} real {t["start_ms"]:6}  IA {str(w["start_ms"]):6}  {err:>9}  conf {w["confidence"]}')
 print(f"== {label}: voces {result['voices']}, separación {result['separation_s']} s, alineación {result['alignment_s']} s")
 print(f"   voz principal: {len(lead_err)}/{lead_total} palabras con tiempo")
 if lead_err:
@@ -26,5 +29,6 @@ if lead_err:
 print(f"   coros: {len(back_err)} palabras con tiempo, errores {back_err}")
 print(result["lrc"])
 ok = (len(lead_err) >= 0.8 * lead_total and statistics.median(lead_err) <= 80
-      and sum(1 for e in lead_err if e <= 150) >= 0.9 * len(lead_err))
+      and sum(1 for e in lead_err if e <= 150) >= 0.9 * len(lead_err)
+      and all(e <= 300 for e in back_err))  # un coro sin tiempo vale; uno mal puesto, no
 sys.exit(0 if ok else 1)

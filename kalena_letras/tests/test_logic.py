@@ -99,9 +99,9 @@ def test_time_lines_synced_lead_and_backing():
     script = [(50, "hola"), (75, "mundo"), (200, "otra"), (225, "vez")]
     em_lead, _ = synthetic(script, 320)
     em_back, _ = synthetic([(260, "oh")], 320)
-    silent = np.full(320, -60.0)
-    lead = Voice("lead", em_lead, 20.0, silent)
-    back = Voice("backing", em_back, 20.0, silent)
+    level = np.full(640, -60.0)  # energía cada 10 ms durante los 6,4 s
+    lead = Voice("lead", em_lead, 20.0, level)
+    back = Voice("backing", em_back, 20.0, level)
     lines = [
         lyrics.Line("Hola mundo", 1000, lyrics.split_words("Hola mundo")),
         lyrics.Line("Otra vez (oh)", 4000, lyrics.split_words("Otra vez (oh)")),
@@ -144,3 +144,17 @@ def test_a_line_does_not_steal_sounds_from_the_next_one():
     time_lines(lines, lead, None, lambda: None, ids, synced=True)
     assert lines[0].words[1].end_ms <= 1400
     assert lines[1].words[0].start_ms == 1700
+
+
+def test_backing_word_without_voice_in_its_track_gets_no_time():
+    em_lead, _ = synthetic([(50, "hola"), (75, "mundo")], 200)
+    em_back, _ = synthetic([(110, "oh")], 200)
+    back_energy = np.full(400, -90.0)
+    back_energy[:100] = -20.0  # los coros solo suenan al principio, no donde estaría «oh»
+    lead = Voice("lead", em_lead, 20.0, np.full(400, -60.0))
+    back = Voice("backing", em_back, 20.0, back_energy)
+    lines = [lyrics.Line("Hola mundo (oh)", 1000, lyrics.split_words("Hola mundo (oh)"))]
+    time_lines(lines, lead, back, lambda: None, ids, synced=True)
+    assert lines[0].timed and lines[0].words[2].start_ms is None
+    assert lyrics.write_lrc(lines) == "[00:01.00]<00:01.00>Hola <00:01.50>mundo (oh)<00:01.78>\n"
+

@@ -21,6 +21,11 @@ from .lyrics import Line, Word
 # con los informes de la fase de prueba.
 MIN_LINE_CONFIDENCE = 0.30
 MIN_BACKING_CONFIDENCE = 0.35
+# Una palabra de coro solo se da por buena si la IA la reconoce con esta seguridad…
+MIN_BACKING_WORD_CONFIDENCE = 0.5
+# …y si en la pista de coros hay voz de verdad en ese momento: no más de esto por debajo de lo
+# más fuerte de los coros (lo demás son restos de la voz principal).
+BACKING_ENERGY_RANGE_DB = 25.0
 # Margen alrededor de cada línea al buscarla (la voz puede entrar algo antes o terminar después).
 LINE_MARGIN_MS = 400
 # Si la primera palabra cae a más de esto del tiempo de línea original, algo no cuadra.
@@ -80,6 +85,20 @@ def _apply(pairs, voice: Voice, earliest_ms: int):
         end = max(t.end_ms, start + MIN_WORD_MS)
         word.start_ms, word.end_ms, word.confidence = start, end, t.confidence
         prev = start + 1
+
+
+def _apply_backing(pairs, voice: Voice, earliest_ms: int) -> int:
+    """Como `_apply`, pero solo con las palabras de coros que de verdad suenan en su pista."""
+    loud = float(np.percentile(voice.energy, 95)) if voice.energy.size else 0.0
+    keep = []
+    for word, t in pairs:
+        a = int(t.start_ms / ENERGY_HOP_MS)
+        b = max(a + 1, int(t.end_ms / ENERGY_HOP_MS))
+        level = float(voice.energy[a:b].mean()) if a < voice.energy.size else -120.0
+        if t.confidence >= MIN_BACKING_WORD_CONFIDENCE and level >= loud - BACKING_ENERGY_RANGE_DB and t.start_ms >= earliest_ms:
+            keep.append((word, t))
+    _apply(keep, voice, earliest_ms)
+    return len(keep)
 
 
 def _windows(lines: list[Line], total_ms: float, global_starts: dict[int, int] | None) -> dict[int, tuple[float, float]]:
@@ -163,7 +182,8 @@ def time_lines(lines: list[Line], lead: Voice, backing: Voice | None, full: Call
             if backing is not None and line.backing_words:
                 bres = _align_words(backing, line.backing_words, token_ids, wa, wb)
                 if bres and bres[1] >= MIN_BACKING_CONFIDENCE:
-                    _apply(bres[0], backing, earliest_ms=int(max(0, wa)))
+                    first_lead = min(w.start_ms for w in line.lead_words if w.start_ms is not None)
+                    _apply_backing(bres[0], backing, earliest_ms=max(int(wa), first_lead - 300))
             line.timed = True
             line.confidence = conf
             report["timed"] += 1

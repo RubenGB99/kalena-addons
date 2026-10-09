@@ -37,13 +37,15 @@ def speak(text, voice, pitch, path):
 
 def main(out_dir):
     os.makedirs(out_dir, exist_ok=True)
-    total = 30.0
+    total = 36.0
     lead = np.zeros(int(total * SR))
     back = np.zeros_like(lead)
     truth, synced, plain = [], [], []
     tmp = os.path.join(out_dir, "w.wav")
+    prev_end = 0.0
     for start, text in LINES:
-        t = start
+        # Como en una canción: cada línea empieza cuando ha terminado la anterior (coros incluidos).
+        t = max(start, prev_end + 0.8)
         first = None
         in_paren = False
         for raw in text.split():
@@ -62,6 +64,7 @@ def main(out_dir):
             if first is None:
                 first = t
             t += len(audio) / SR - onset + 0.12
+            prev_end = t
         synced.append({"text": text, "start_ms": int(round(first * 1000))})
         plain.append({"text": text, "start_ms": None})
     # Música: acordes que cambian cada 2 s, un bajo y un ruido suave tipo platillos.
