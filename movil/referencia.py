@@ -31,10 +31,20 @@ from kalena_letras.audio import read_stereo, to_wav, write_wav  # noqa: E402
 
 
 def session(path: str):
+    """Como en el móvil: sin la reserva de memoria de ONNX Runtime (con modelos tan grandes, su
+    «arena» se queda con varios GB que luego no devuelve)."""
     import onnxruntime as ort
     opts = ort.SessionOptions()
     opts.intra_op_num_threads = os.cpu_count() or 4
+    opts.enable_cpu_mem_arena = False
+    opts.enable_mem_pattern = False
     return ort.InferenceSession(path, opts, providers=["CPUExecutionProvider"])
+
+
+def peak_mb() -> float:
+    """Memoria máxima usada hasta ahora por este proceso (MB)."""
+    import resource
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
 
 
 def hann(n: int) -> np.ndarray:
@@ -82,8 +92,13 @@ class OnnxSeparator:
 
     def _model(self, name: str):
         if name not in self.sessions:
+            # Un modelo de separación cargado a la vez (como en el móvil).
+            self.sessions.clear()
+            import gc
+            gc.collect()
             spec = self.manifest["separacion"][name]
             self.sessions[name] = (session(os.path.join(self.folder, spec["archivos"][self.variant])), spec)
+            print(f"  {name}: cargado, memoria máxima hasta ahora {peak_mb():.0f} MB", flush=True)
         return self.sessions[name]
 
     def demix(self, name: str, mix: np.ndarray) -> list[np.ndarray]:
@@ -110,6 +125,8 @@ class OnnxSeparator:
             t = time.time()
             mask = sess.run(None, {"stft": ri})[0][0]  # (voces, F·canales, T, 2)
             self.seconds += time.time() - t
+            if i == 0:
+                print(f"  {name}: primer trozo en {time.time() - t:.1f} s, memoria máxima {peak_mb():.0f} MB", flush=True)
             for k in range(stems):
                 m = mask[k].reshape(-1, channels, mask.shape[2], 2)
                 for c in range(channels):
@@ -225,7 +242,8 @@ def main(argv: list[str]) -> int:
                "red_separacion_s": round(aligner.separator.seconds), "red_alineacion_s": round(aligner.model.seconds),
                "lrc": L.write_lrc(lines)},
               open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
-    print(f"{variant}: redes de separación {aligner.separator.seconds:.0f} s, de alineación {aligner.model.seconds:.0f} s")
+    print(f"{variant}: redes de separación {aligner.separator.seconds:.0f} s, de alineación {aligner.model.seconds:.0f} s, "
+          f"memoria máxima {peak_mb():.0f} MB")
     return 0
 
 
