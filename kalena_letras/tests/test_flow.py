@@ -122,6 +122,9 @@ def test_whole_flow(tmp_path, monkeypatch):
                                 "usuario": "rubengb", "canciones": ["Artista - Hola mundo"], "separacion": "maxima"}))
     monkeypatch.setattr(M, "OPTIONS", str(opts))
     monkeypatch.setenv("KALENA_EXIT", "1")
+    # Versiones anteriores apuntaban también las canciones saltadas: esta no cuenta como hecha.
+    os.makedirs(tmp_path / "data", exist_ok=True)
+    (tmp_path / "data" / "estado.json").write_text(json.dumps({SONG_ID: {"resultado": "sin letra en Jellyfin"}}))
     assert M.main() == 0
 
     st = FakeJellyfin.state
@@ -135,6 +138,7 @@ def test_whole_flow(tmp_path, monkeypatch):
     summary = json.load(open(tmp_path / "share" / "resumen.json"))
     assert summary[0]["resultado"] == "guardada en Jellyfin", summary
     assert summary[0]["confianza_voz_principal"]["voz_b"] > summary[0]["confianza_voz_principal"]["voz_a"]
+    assert json.load(open(tmp_path / "data" / "estado.json"))[SONG_ID]["resultado"] == "guardada en Jellyfin"
     log_text = json.dumps(summary)
     assert "clave-secreta" not in log_text
     server.shutdown()

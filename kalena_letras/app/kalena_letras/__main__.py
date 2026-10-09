@@ -186,6 +186,9 @@ def align_audio(aligner: "Aligner", mix_wav: str, lines: list, synced: bool, wor
     return report, score, t_sep, time.time() - t_align0
 
 
+SAVED = "guardada en Jellyfin"
+
+
 def process(song: dict, jf: Jellyfin, user_id: str, aligner: Aligner, opts: dict) -> dict:
     sid, title = song["Id"], song.get("Name", "?")
     artist = ", ".join(song.get("Artists") or []) or song.get("AlbumArtist") or ""
@@ -246,8 +249,10 @@ def process(song: dict, jf: Jellyfin, user_id: str, aligner: Aligner, opts: dict
         back = jf.lyrics(sid) or {}
         shown = "\n".join((x.get("Text") or "").strip() for x in back.get("Lyrics") or [] if (x.get("Text") or "").strip())
         words_back = sum(1 for x in back.get("Lyrics") or [] if x.get("Cues"))
-        result["resultado"] = ("guardada en Jellyfin" if shown == L.fingerprint(lrc) and words_back
+        saved = bool(shown == L.fingerprint(lrc) and words_back)
+        result["resultado"] = (SAVED if saved
                                else "subida, pero Jellyfin aún muestra otra versión (revisa «Guardar letras» de la biblioteca)")
+        result["guardada"] = saved
     else:
         result["resultado"] = "solo guardada en /share/kalena_letras (guardar_en_jellyfin desactivado)"
     save_json(os.path.join(SHARE, base + ".json"), result)
@@ -287,7 +292,9 @@ def main() -> int:
         return idle()
     log.info("Conectado a Jellyfin %s («%s»), usuario %s.", info.get("Version"), info.get("ServerName"), user)
 
-    state = load_json(STATE, {})
+    # Solo cuentan como hechas las canciones cuya letra se guardó de verdad (las saltadas por no tener
+    # letra, por tener ya tiempos o por un fallo se vuelven a mirar en el siguiente arranque).
+    state = {k: v for k, v in load_json(STATE, {}).items() if v.get("resultado") == SAVED}
     aligner = Aligner(opts.get("separacion", "maxima"))
     summary = []
     for query in songs:
@@ -311,8 +318,9 @@ def main() -> int:
                 log.info("  · Ya procesada antes.")
                 continue
             res = process(song, jf, user_id, aligner, opts)
-            state[song["Id"]] = {"cancion": res["cancion"], "resultado": res["resultado"], "cuando": int(time.time())}
-            save_json(STATE, state)
+            if res.get("guardada"):
+                state[song["Id"]] = {"cancion": res["cancion"], "resultado": res["resultado"], "cuando": int(time.time())}
+                save_json(STATE, state)
             summary.append(res)
             log.info("  · %s. %s líneas con tiempos por palabra. %s s en total.", res["resultado"],
                      res.get("lineas_con_tiempos_por_palabra", "0"), res.get("tiempo_total_s", "?"))

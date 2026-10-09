@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.1.5
+- Solo se apuntan como hechas las canciones cuya letra se ha guardado de verdad en Jellyfin. Las
+  que se saltan (sin letra, ya con tiempos, sin alinear o con error) se vuelven a mirar en el
+  siguiente arranque, también las que versiones anteriores apuntaron por error.
+
 ## 0.1.4
 - Canción no encontrada: el registro lo dice claro, «no encontrada en las bibliotecas de <usuario>»,
   porque solo se busca en las bibliotecas que ve el usuario configurado.
