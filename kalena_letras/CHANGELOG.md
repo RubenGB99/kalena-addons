@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.1.9
+- Coloca muchas más líneas: el límite de seguridad se ha ajustado midiendo con una canción real
+  (0,10 si la letra tiene tiempos de línea, 0,20 si no). Por encima de esos valores las palabras
+  quedan casi siempre a menos de 0,15 s; por debajo, la línea se deja como estaba.
+
 ## 0.1.8
 - Si la IA pone el comienzo de una palabra donde la voz aún está en silencio (se adelanta), lo
   lleva a donde la voz arranca de verdad. Las palabras que ya estaban bien no cambian.

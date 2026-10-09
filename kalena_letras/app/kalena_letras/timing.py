@@ -17,9 +17,12 @@ import numpy as np
 from .align import ENERGY_HOP_MS, refine_start, skip_silence, viterbi, word_timings
 from .lyrics import Line, Word
 
-# Confianza mínima (media de las letras) para dar por buenas las palabras de una línea. Se ajusta
-# con los informes de la fase de prueba.
-MIN_LINE_CONFIDENCE = 0.30
+# Confianza mínima (media de las letras) para dar por buenas las palabras de una línea, medida con
+# canciones reales (ia-canciones de Kalena, octubre de 2026): con tiempos de línea, desde 0.10 el
+# error mediano de la línea baja de ~270 ms a ~45 ms (y la línea no puede irse más de
+# MAX_LINE_SHIFT_MS de su tiempo); sin ellos la línea puede caer lejos y hace falta más seguridad.
+MIN_LINE_CONFIDENCE = 0.20
+MIN_LINE_CONFIDENCE_SYNCED = 0.10
 # Por debajo de esto, la línea se prueba también con la voz completa (principal + coros).
 FULL_VOICE_BELOW = 0.45
 MIN_BACKING_CONFIDENCE = 0.35
@@ -178,7 +181,7 @@ def time_lines(lines: list[Line], lead: Voice, backing: Voice | None, full: Call
                     res, conf, used = alt, alt[1], full_voice.name
                     report["fallback_full"] += 1
         voice = lead if used == lead.name else full_voice
-        ok = res is not None and conf >= MIN_LINE_CONFIDENCE
+        ok = res is not None and conf >= (MIN_LINE_CONFIDENCE_SYNCED if synced else MIN_LINE_CONFIDENCE)
         reason = "" if ok else ("no encaja en su trozo de audio" if res is None else "confianza baja")
         if ok and synced and line.start_ms is not None:
             first = res[0][0][1].start_ms

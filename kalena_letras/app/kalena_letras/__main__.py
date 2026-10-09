@@ -23,9 +23,9 @@ from .align import SAMPLE_RATE, EmissionModel, energy_db
 from .audio import duration_s, read_mono, read_stereo, to_wav, write_wav
 from .jellyfin import Jellyfin, JellyfinError
 from .separate import Separator
-from .timing import MIN_LINE_CONFIDENCE, Voice, line_windows, time_lines
+from .timing import FULL_VOICE_BELOW, Voice, line_windows, time_lines
 
-VERSION = "0.1.8"
+VERSION = "0.1.9"
 OPTIONS = os.environ.get("KALENA_OPTIONS", "/data/options.json")
 DATA = os.environ.get("KALENA_DATA", "/data")
 SHARE = os.environ.get("KALENA_SHARE", "/share/kalena_letras")
@@ -157,7 +157,7 @@ def align_audio(aligner: "Aligner", mix_wav: str, lines: list, synced: bool, wor
 
     first = copy.deepcopy(lines)
     report = time_lines(first, lead, None, lambda: None, model.token_ids, synced)
-    unclear = {e["index"] for e in report["lines"] if e["confidence"] < MIN_LINE_CONFIDENCE + 0.15}
+    unclear = {e["index"] for e in report["lines"] if e["confidence"] < FULL_VOICE_BELOW}
     need = unclear | {i for i, l in enumerate(lines) if l.backing_words}
     windows = line_windows(lines, lead, model.token_ids, synced)
     wanted = [windows[i] for i in sorted(need) if i in windows]
