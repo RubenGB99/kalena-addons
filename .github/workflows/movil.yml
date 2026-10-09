@@ -1,0 +1,81 @@
+name: Modelos para el móvil
+
+# Convierte los modelos de máxima calidad a ONNX (lo que usará Kalena en el móvil), comprueba que
+# dan lo mismo que los originales y mide la precisión con la versión de referencia (numpy + ONNX,
+# igual que el móvil). Si se pide, los publica para que Kalena los descargue.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publicar:
+        description: Publicar los modelos para Kalena
+        type: choice
+        options: ["no", fp32, int8]
+        default: "no"
+
+permissions:
+  contents: write
+
+jobs:
+  exportar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Paquetes del sistema
+        timeout-minutes: 8
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update -qq
+          sudo apt-get -o Acquire::Retries=3 install -y -qq --no-install-recommends espeak-ng ffmpeg
+      - name: PyTorch, audio-separator y ONNX
+        run: |
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu -r kalena_letras/requirements.txt onnx==1.16.2
+          python -c "import torch, torchaudio, onnx, onnxruntime; print(torch.__version__, torchaudio.__version__, onnx.__version__, onnxruntime.__version__)"
+      - name: Canción sintética con tiempos conocidos
+        run: python kalena_letras/tests/make_synthetic_song.py "$PWD/prueba"
+      - name: Modelos en caché (los de la prueba de máxima calidad)
+        uses: actions/cache/restore@v4
+        with:
+          path: modelos
+          key: modelos-maxima-v1
+      - name: Exportar y comprobar
+        run: python movil/exportar.py modelos salida prueba/cancion.wav
+      - name: Referencia del móvil (fp32)
+        if: always()
+        run: |
+          python movil/referencia.py salida fp32 prueba/cancion.wav prueba/letra_sincronizada.json prueba/movil_fp32.json
+          python kalena_letras/tests/check_selftest.py prueba/movil_fp32.json prueba/verdad.json "móvil, fp32" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Referencia del móvil (int8)
+        if: always()
+        run: |
+          python movil/referencia.py salida int8 prueba/cancion.wav prueba/letra_sincronizada.json prueba/movil_int8.json
+          python kalena_letras/tests/check_selftest.py prueba/movil_int8.json prueba/verdad.json "móvil, int8" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Referencia del móvil con coros sin escribir (fp32)
+        if: always()
+        run: |
+          python movil/referencia.py salida fp32 prueba/cancion_coros.wav prueba/letra_sincronizada.json prueba/movil_coros.json
+          python kalena_letras/tests/check_selftest.py prueba/movil_coros.json prueba/verdad.json "móvil, coros sin escribir" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Publicar para Kalena
+        if: inputs.publicar != 'no'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VARIANTE: ${{ inputs.publicar }}
+        run: |
+          python - <<'EOF'
+          import json, os
+          m = json.load(open("salida/manifiesto.json"))
+          v = os.environ["VARIANTE"]
+          m["variante"] = v
+          files = [s["archivos"][v] for s in m["separacion"].values()] + [m["alineacion"]["archivos"][v]]
+          m["descargas"] = {f: m["tamanos"][f] for f in files}
+          json.dump(m, open("salida/manifiesto.json", "w"), ensure_ascii=False, indent=1)
+          open("salida/archivos.txt", "w").write("\n".join("salida/" + f for f in files))
+          EOF
+          TAG="modelos-movil-v1-$VARIANTE"
+          gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" salida/manifiesto.json $(cat salida/archivos.txt) \
+            --title "Modelos de IA para Kalena ($VARIANTE)" \
+            --notes "Separación de voces (MelBand RoFormer, karaoke y voces) y alineación (MMS de Meta) en ONNX, para «Sincronizar palabras con IA» de Kalena."
