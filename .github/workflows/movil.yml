@@ -41,8 +41,16 @@ jobs:
         with:
           path: modelos
           key: modelos-maxima-v1
-      - name: Exportar y comprobar
-        run: python movil/exportar.py modelos salida prueba/cancion.wav
+      - name: Separación, voz principal (exportar y comprobar)
+        run: python movil/exportar.py modelos salida karaoke prueba/cancion.wav
+      - name: Separación, voz completa (exportar y comprobar)
+        run: python movil/exportar.py modelos salida voces prueba/cancion.wav
+      - name: Alineación (exportar y comprobar)
+        run: python movil/exportar.py modelos salida alineacion
+      - name: Manifiesto y tamaños
+        run: |
+          python movil/exportar.py modelos salida manifiesto
+          df -h . | tail -1
       - name: Referencia del móvil (fp32)
         if: always()
         run: |

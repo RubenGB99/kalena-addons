@@ -148,15 +148,21 @@ def export_roformer(name: str, filename: str, model_dir: str, out: str, song: st
     err = float(np.abs(onnx_mask - mask.numpy()).max())
     print(f"{name}: ONNX frente a PyTorch, diferencia máxima en la máscara {err:.2e}", flush=True)
     assert err < 1e-2, err
+    rate = cfg.audio.sample_rate
+    overlap = inst.overlap
+    # Lo que ocupa el modelo de PyTorch se suelta antes de cuantizar (la cuantización carga el ONNX entero).
+    del sess, core, model, inst, sep, want, got, mask, spec, spec_ri, onnx_mask
+    import gc
+    gc.collect()
     int8 = fp32.replace(".onnx", "_int8.onnx")
     quantize(fp32, int8)
     return {
         "archivos": {"fp32": os.path.basename(fp32), "int8": os.path.basename(int8)},
-        "frecuencia_muestreo": cfg.audio.sample_rate,
+        "frecuencia_muestreo": rate,
         "canales": channels,
         "n_fft": n_fft, "salto": hop, "ventana": win,
         "trozo_muestras": chunk, "fotogramas": frames, "frecuencias": freqs,
-        "paso_segundos": inst.overlap,
+        "paso_segundos": overlap,
         "voces": stems,
         "voz_principal": stems[0],
         "secundaria_es_resto": len(stems) == 1,
@@ -187,9 +193,12 @@ def export_mms(model_dir: str, out: str) -> dict:
     err2 = float(np.abs(sess.run(None, {"audio": other.numpy()})[0] - want2).max())
     print(f"alineación: con otra duración, diferencia máxima {err2:.2e}", flush=True)
     assert err2 < 1e-2, err2
+    labels = bundle.get_dict(star=None)
+    del sess, model, wrapper
+    import gc
+    gc.collect()
     int8 = fp32.replace(".onnx", "_int8.onnx")
     quantize(fp32, int8)
-    labels = bundle.get_dict(star=None)
     return {
         "archivos": {"fp32": os.path.basename(fp32), "int8": os.path.basename(int8)},
         "frecuencia_muestreo": 16_000,
@@ -199,22 +208,38 @@ def export_mms(model_dir: str, out: str) -> dict:
 
 
 def main(argv: list[str]) -> int:
-    model_dir, out = argv[0], argv[1]
-    song = argv[2] if len(argv) > 2 else None
+    """Un paso por proceso (cada modelo ocupa varios GB al exportarlo y cuantizarlo):
+
+        exportar.py <modelos> <salida> karaoke|voces [cancion.wav]
+        exportar.py <modelos> <salida> alineacion
+        exportar.py <modelos> <salida> manifiesto
+    """
+    model_dir, out, step = argv[0], argv[1], argv[2]
+    song = argv[3] if len(argv) > 3 else None
     os.makedirs(out, exist_ok=True)
-    manifest = {"version": 1, "separacion": {}, "alineacion": None}
-    for name, filename in SEPARACION.items():
-        manifest["separacion"][name] = export_roformer(name, filename, os.path.join(model_dir, "separacion"), out, song)
-    manifest["alineacion"] = export_mms(os.path.join(model_dir, "alineacion"), out)
-    sizes = {}
-    for f in sorted(os.listdir(out)):
-        if f.endswith(".onnx"):
-            path = os.path.join(out, f)
-            sizes[f] = {"bytes": os.path.getsize(path), "sha256": sha256(path)}
-            print(f"{f}: {os.path.getsize(path) / 1e6:.0f} MB", flush=True)
-    manifest["tamanos"] = sizes
-    with open(os.path.join(out, "manifiesto.json"), "w", encoding="utf-8") as f:
-        json.dump(manifest, f, ensure_ascii=False, indent=1)
+    if step in SEPARACION:
+        part = export_roformer(step, SEPARACION[step], os.path.join(model_dir, "separacion"), out, song)
+    elif step == "alineacion":
+        part = export_mms(os.path.join(model_dir, "alineacion"), out)
+    elif step == "manifiesto":
+        manifest = {"version": 1, "separacion": {}, "alineacion": None}
+        for name in SEPARACION:
+            manifest["separacion"][name] = json.load(open(os.path.join(out, f"{name}.json"), encoding="utf-8"))
+        manifest["alineacion"] = json.load(open(os.path.join(out, "alineacion.json"), encoding="utf-8"))
+        sizes = {}
+        for f in sorted(os.listdir(out)):
+            if f.endswith(".onnx"):
+                path = os.path.join(out, f)
+                sizes[f] = {"bytes": os.path.getsize(path), "sha256": sha256(path)}
+                print(f"{f}: {os.path.getsize(path) / 1e6:.0f} MB", flush=True)
+        manifest["tamanos"] = sizes
+        with open(os.path.join(out, "manifiesto.json"), "w", encoding="utf-8") as f:
+            json.dump(manifest, f, ensure_ascii=False, indent=1)
+        return 0
+    else:
+        raise SystemExit(f"Paso desconocido: {step}")
+    with open(os.path.join(out, f"{step}.json"), "w", encoding="utf-8") as f:
+        json.dump(part, f, ensure_ascii=False, indent=1)
     return 0
 
 
