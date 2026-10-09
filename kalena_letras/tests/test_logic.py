@@ -201,3 +201,20 @@ def test_search_song_ignores_the_kind_of_apostrophe():
 
     assert Fake().search_song("u", "Don't Stop")[0]["Id"] == "b1"
     assert Fake().search_song("u", "Artista - Don't Stop")[0]["Id"] == "b1"
+
+
+def test_lines_the_ai_does_not_time_keep_their_word_times():
+    payload = {"Lyrics": [
+        {"Text": "Hola mundo", "Start": 10_000_000,
+         "Cues": [{"Position": 0, "Start": 10_000_000}, {"Position": 5, "Start": 15_000_000, "End": 18_000_000}]},
+        {"Text": "Otra vez", "Start": 40_000_000},
+    ]}
+    lines = lyrics.from_jellyfin(payload)
+    # La IA solo alinea la segunda línea.
+    second = lines[1]
+    second.timed = True
+    second.words[0].start_ms, second.words[1].start_ms, second.words[1].end_ms = 4000, 4500, 5000
+    out = lyrics.write_lrc(lines).splitlines()
+    assert out[0] == "[00:01.00]<00:01.00>Hola <00:01.50>mundo<00:01.80>"
+    assert out[1] == "[00:04.00]<00:04.00>Otra <00:04.50>vez<00:05.00>"
+    assert lyrics.original_lrc(payload).splitlines()[0] == out[0]

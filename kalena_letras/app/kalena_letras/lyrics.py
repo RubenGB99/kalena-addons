@@ -33,6 +33,7 @@ class Line:
     start_ms: int | None          # tiempo de la línea en la letra original (si la tiene)
     words: list[Word] = field(default_factory=list)
     had_word_times: bool = False  # la letra original ya traía tiempos por palabra
+    original: str = ""            # la línea tal como estaba, en LRC (con sus tiempos por palabra si los tenía)
     confidence: float = 0.0
     timed: bool = False           # la IA le ha puesto tiempos por palabra
 
@@ -81,6 +82,7 @@ def from_jellyfin(payload: dict) -> list[Line]:
         start_ms = int(start) // TICKS_PER_MS if start is not None else None
         line = Line(text=text, start_ms=start_ms, words=split_words(text))
         line.had_word_times = bool(item.get("Cues"))
+        line.original = _item_lrc(item)
         lines.append(line)
     return lines
 
@@ -117,6 +119,9 @@ def write_lrc(lines: list[Line]) -> str:
             if last.end_ms is not None:
                 parts.append("<%s>" % stamp(last.end_ms))
             out.append("".join(parts))
+        elif line.had_word_times and line.original:
+            # La IA no la tiene clara: se queda exactamente como estaba, con sus tiempos por palabra.
+            out.append(line.original)
         elif line.start_ms is not None:
             out.append("[%s]%s" % (stamp(line.start_ms), text))
         else:
@@ -124,31 +129,31 @@ def write_lrc(lines: list[Line]) -> str:
     return "\n".join(out) + "\n"
 
 
+def _item_lrc(item: dict) -> str:
+    """Una línea de `GET /Audio/{id}/Lyrics` como LRC, con sus tiempos por palabra si los tiene."""
+    text = item.get("Text") or ""
+    start = item.get("Start")
+    cues = item.get("Cues") or []
+    if start is None:
+        return text
+    if not cues:
+        return "[%s]%s" % (stamp(int(start) // TICKS_PER_MS), text)
+    cues = sorted(cues, key=lambda c: c.get("Position", 0))
+    parts = ["[%s]" % stamp(int(start) // TICKS_PER_MS), text[: cues[0].get("Position", 0)]]
+    for i, c in enumerate(cues):
+        pos = c.get("Position", 0)
+        end = cues[i + 1].get("Position", len(text)) if i + 1 < len(cues) else len(text)
+        parts.append("<%s>" % stamp(int(c.get("Start", 0)) // TICKS_PER_MS))
+        parts.append(text[pos:end])
+    last_end = cues[-1].get("End")
+    if last_end:
+        parts.append("<%s>" % stamp(int(last_end) // TICKS_PER_MS))
+    return "".join(parts)
+
+
 def original_lrc(payload: dict) -> str:
     """La letra que había antes, como LRC (para que «Recuperar original» de Kalena funcione)."""
-    out = []
-    for item in payload.get("Lyrics") or []:
-        text = item.get("Text") or ""
-        start = item.get("Start")
-        cues = item.get("Cues") or []
-        if start is None:
-            out.append(text)
-            continue
-        if not cues:
-            out.append("[%s]%s" % (stamp(int(start) // TICKS_PER_MS), text))
-            continue
-        cues = sorted(cues, key=lambda c: c.get("Position", 0))
-        parts = ["[%s]" % stamp(int(start) // TICKS_PER_MS), text[: cues[0].get("Position", 0)]]
-        for i, c in enumerate(cues):
-            pos = c.get("Position", 0)
-            end = cues[i + 1].get("Position", len(text)) if i + 1 < len(cues) else len(text)
-            parts.append("<%s>" % stamp(int(c.get("Start", 0)) // TICKS_PER_MS))
-            parts.append(text[pos:end])
-        last_end = cues[-1].get("End")
-        if last_end:
-            parts.append("<%s>" % stamp(int(last_end) // TICKS_PER_MS))
-        out.append("".join(parts))
-    return "\n".join(out) + "\n"
+    return "\n".join(_item_lrc(item) for item in payload.get("Lyrics") or []) + "\n"
 
 
 def fingerprint(text: str) -> str:

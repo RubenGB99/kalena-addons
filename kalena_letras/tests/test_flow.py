@@ -121,7 +121,6 @@ def test_whole_flow(tmp_path, monkeypatch):
     opts.write_text(json.dumps({"jellyfin_url": f"http://127.0.0.1:{server.server_port}", "clave_api": "clave-secreta",
                                 "usuario": "rubengb", "canciones": ["Artista - Hola mundo"], "separacion": "maxima"}))
     monkeypatch.setattr(M, "OPTIONS", str(opts))
-    monkeypatch.setenv("KALENA_EXIT", "1")
     # Versiones anteriores apuntaban también las canciones saltadas: esta no cuenta como hecha.
     os.makedirs(tmp_path / "data", exist_ok=True)
     (tmp_path / "data" / "estado.json").write_text(json.dumps({SONG_ID: {"resultado": "sin letra en Jellyfin"}}))

@@ -175,10 +175,13 @@ def time_lines(lines: list[Line], lead: Voice, backing: Voice | None, full: Call
                     report["fallback_full"] += 1
         voice = lead if used == lead.name else full_voice
         ok = res is not None and conf >= MIN_LINE_CONFIDENCE
+        reason = "" if ok else ("no encaja en su trozo de audio" if res is None else "confianza baja")
         if ok and synced and line.start_ms is not None:
             first = res[0][0][1].start_ms
             if abs(first - line.start_ms) > MAX_LINE_SHIFT_MS:
                 ok = False
+                reason = "empieza %.1f s %s que su tiempo de línea" % (
+                    abs(first - line.start_ms) / 1000, "antes" if first < line.start_ms else "después")
         if ok:
             wa, wb = windows[i]
             _apply(res[0], voice, earliest_ms=int(max(0, wa)))
@@ -204,5 +207,8 @@ def time_lines(lines: list[Line], lead: Voice, backing: Voice | None, full: Call
             line.timed = True
             line.confidence = conf
             report["timed"] += 1
-        report["lines"].append({"index": i, "line": line.text, "confidence": round(conf, 3), "voice": used, "timed": ok})
+        entry = {"index": i, "line": line.text, "confidence": round(conf, 3), "voice": used, "timed": ok}
+        if not ok:
+            entry["motivo"] = reason
+        report["lines"].append(entry)
     return report

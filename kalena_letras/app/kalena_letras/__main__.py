@@ -229,6 +229,7 @@ def process(song: dict, jf: Jellyfin, user_id: str, aligner: Aligner, opts: dict
         "duracion_cancion_s": round(length),
         "letra_original": "con tiempos por línea" if synced else "sin tiempos",
         "lineas_con_tiempos_por_palabra": f"{report['timed']} de {report['total']}",
+        "lineas_que_conservan_sus_tiempos_originales": sum(1 for l in lines if l.had_word_times and not l.timed),
         "lineas_reintentadas_con_voz_completa": report["fallback_full"],
         "confianza_voz_principal": {"voz_a": round(score["voz_a"], 3), "voz_b": round(score["voz_b"], 3)},
         "tiempo_separacion_s": round(t_sep),
@@ -278,10 +279,10 @@ def main() -> int:
     songs = [s for s in opts.get("canciones") or [] if str(s).strip()]
     if not (url and key and user):
         log.error("Falta configurar la dirección de Jellyfin, la clave de API o el usuario (pestaña Configuración).")
-        return idle()
+        return 1
     if not songs:
         log.error("No hay canciones en la lista «canciones». Añade 3 o 4 («Artista - Título») y reinicia.")
-        return idle()
+        return 1
 
     jf = Jellyfin(url, key, VERSION)
     try:
@@ -289,7 +290,7 @@ def main() -> int:
         user_id = jf.user_id(user)
     except JellyfinError as e:
         log.error("%s", e)
-        return idle()
+        return 1
     log.info("Conectado a Jellyfin %s («%s»), usuario %s.", info.get("Version"), info.get("ServerName"), user)
 
     # Solo cuentan como hechas las canciones cuya letra se guardó de verdad (las saltadas por no tener
@@ -330,15 +331,9 @@ def main() -> int:
             summary.append({"cancion": query, "resultado": f"error: {e}"})
     os.makedirs(SHARE, exist_ok=True)
     save_json(os.path.join(SHARE, "resumen.json"), summary)
-    log.info("Terminado. Resumen en /share/kalena_letras/resumen.json. Ya puedes detener el complemento.")
-    return idle()
-
-
-def idle() -> int:
-    if os.environ.get("KALENA_EXIT"):
-        return 0
-    while True:
-        time.sleep(3600)
+    # Se detiene solo: así libera la memoria de los modelos (varios GB) en cuanto acaba.
+    log.info("Terminado. Resumen en /share/kalena_letras/resumen.json. El complemento se detiene solo.")
+    return 0
 
 
 if __name__ == "__main__":

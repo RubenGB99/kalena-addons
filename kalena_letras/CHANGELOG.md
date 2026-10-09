@@ -1,5 +1,12 @@
 # Cambios
 
+## 0.1.6
+- Las líneas que la IA no alinea con seguridad conservan sus tiempos por palabra si ya los tenían
+  (antes se quedaban solo con el tiempo de línea y perdían el karaoke).
+- El informe dice por qué no se alineó cada línea (confianza baja, no encaja en su trozo o se aleja
+  de su tiempo de línea) y cuántas conservaron sus tiempos originales.
+- Al terminar se detiene solo y libera la memoria (antes se quedaba encendido con ~3 GB ocupados).
+
 ## 0.1.5
 - Solo se apuntan como hechas las canciones cuya letra se ha guardado de verdad en Jellyfin. Las
   que se saltan (sin letra, ya con tiempos, sin alinear o con error) se vuelven a mirar en el

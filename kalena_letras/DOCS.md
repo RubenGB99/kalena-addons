@@ -41,4 +41,7 @@ canción de 3-4 minutos tarda **unos 10-15 minutos**, algo más si tiene coros e
 - En la carpeta compartida `share/kalena_letras` quedan, por cada canción, el `.lrc` y un `.json`
   con el detalle (confianza de cada línea, tiempos de cada paso). Ese `.json` es el que hay que
   mandar para ajustar la precisión.
-- Cuando termina, el registro dice «Terminado» y ya se puede **detener** el complemento.
+- Las líneas que la IA no tiene claras se quedan exactamente como estaban: con su tiempo de línea
+  o, si ya los tenían, con sus tiempos por palabra. El `.json` dice el motivo de cada una.
+- Cuando termina, el registro dice «Terminado» y el complemento se detiene solo (así libera la
+  memoria de los modelos).
