@@ -66,12 +66,21 @@ class RoformerCore(nn.Module):
 
 
 class MmsLogProbs(nn.Module):
-    def __init__(self, model):
+    """Lo mismo que el modelo de torchaudio (_Wav2Vec2Model), con su layer_norm de la forma entera
+    escrita a mano: con la longitud variable, ONNX no admite layer_norm(x, x.shape)."""
+
+    def __init__(self, bundle_model):
         super().__init__()
-        self.m = model
+        self.inner = bundle_model.model
+        self.normalize = bundle_model.normalize_waveform
+        assert not bundle_model.append_star
 
     def forward(self, audio):  # (1, muestras)
-        emissions, _ = self.m(audio)
+        if self.normalize:
+            mean = audio.mean()
+            var = ((audio - mean) ** 2).mean()
+            audio = (audio - mean) / torch.sqrt(var + 1e-5)
+        emissions, _ = self.inner(audio)
         return torch.log_softmax(emissions, dim=-1)
 
 
@@ -179,6 +188,10 @@ def export_mms(model_dir: str, out: str) -> dict:
     fp32 = os.path.join(out, "alineacion_mms.onnx")
     with torch.no_grad():
         want = wrapper(dummy).numpy()
+        original = model(dummy)[0].numpy()
+        err0 = float(np.abs(want - original).max())
+        print(f"alineación: envoltorio frente al modelo de torchaudio, diferencia máxima {err0:.2e}", flush=True)
+        assert err0 < 1e-3, err0
         torch.onnx.export(wrapper, (dummy,), fp32, opset_version=17, input_names=["audio"], output_names=["logp"],
                           dynamic_axes={"audio": {1: "muestras"}, "logp": {1: "fotogramas"}}, do_constant_folding=True)
     import onnxruntime as ort
