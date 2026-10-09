@@ -109,7 +109,9 @@ def export_roformer(name: str, filename: str, model_dir: str, out: str, song: st
     cfg = inst.model_data_cfgdict
     st = model.stft_kwargs
     n_fft, hop, win = st["n_fft"], st["hop_length"], st["win_length"]
-    dim_t = cfg.inference.dim_t
+    # Trozo más corto que el del modelo si se pide (KALENA_TROZO, en fotogramas): la atención
+    # temporal ocupa memoria con el cuadrado de su longitud (con 801 fotogramas, varios GB).
+    dim_t = int(os.environ.get("KALENA_TROZO") or cfg.inference.dim_t)
     chunk = cfg.audio.hop_length * (dim_t - 1)
     assert cfg.audio.hop_length == hop, (cfg.audio.hop_length, hop)
     channels = model.audio_channels
@@ -158,7 +160,8 @@ def export_roformer(name: str, filename: str, model_dir: str, out: str, song: st
     print(f"{name}: ONNX frente a PyTorch, diferencia máxima en la máscara {err:.2e}", flush=True)
     assert err < 1e-2, err
     rate = cfg.audio.sample_rate
-    overlap = inst.overlap
+    # Con trozos cortos, uno cada medio trozo (se solapan y se suman con la ventana de Hamming).
+    overlap = inst.overlap if dim_t == cfg.inference.dim_t else round(chunk / rate / 2, 3)
     # Lo que ocupa el modelo de PyTorch se suelta antes de cuantizar (la cuantización carga el ONNX entero).
     del sess, core, model, inst, sep, want, got, mask, spec, spec_ri, onnx_mask
     import gc

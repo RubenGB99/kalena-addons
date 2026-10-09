@@ -12,6 +12,11 @@ on:
         type: choice
         options: ["no", fp32, int8]
         default: "no"
+      trozo:
+        description: Fotogramas por trozo de separación que se publican (de los que se prueban)
+        type: choice
+        options: ["256", "401"]
+        default: "256"
 
 permissions:
   contents: write
@@ -20,6 +25,12 @@ jobs:
   exportar:
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        trozo: [256, 401]
+    env:
+      KALENA_TROZO: ${{ matrix.trozo }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -55,19 +66,14 @@ jobs:
         if: always()
         run: |
           python movil/referencia.py salida int8 prueba/cancion.wav prueba/letra_sincronizada.json prueba/movil_int8.json
-          python kalena_letras/tests/check_selftest.py prueba/movil_int8.json prueba/verdad.json "móvil, int8" | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Referencia del móvil (fp32)
+          python kalena_letras/tests/check_selftest.py prueba/movil_int8.json prueba/verdad.json "móvil, int8, trozo ${{ matrix.trozo }}" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Referencia del móvil con coros sin escribir (int8)
         if: always()
         run: |
-          python movil/referencia.py salida fp32 prueba/cancion.wav prueba/letra_sincronizada.json prueba/movil_fp32.json
-          python kalena_letras/tests/check_selftest.py prueba/movil_fp32.json prueba/verdad.json "móvil, fp32" | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Referencia del móvil con coros sin escribir (fp32)
-        if: always()
-        run: |
-          python movil/referencia.py salida fp32 prueba/cancion_coros.wav prueba/letra_sincronizada.json prueba/movil_coros.json
-          python kalena_letras/tests/check_selftest.py prueba/movil_coros.json prueba/verdad.json "móvil, coros sin escribir" | tee -a "$GITHUB_STEP_SUMMARY"
+          python movil/referencia.py salida int8 prueba/cancion_coros.wav prueba/letra_sincronizada.json prueba/movil_coros.json
+          python kalena_letras/tests/check_selftest.py prueba/movil_coros.json prueba/verdad.json "móvil, coros sin escribir, trozo ${{ matrix.trozo }}" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Publicar para Kalena
-        if: inputs.publicar != 'no'
+        if: inputs.publicar != 'no' && inputs.trozo == format('{0}', matrix.trozo)
         env:
           GH_TOKEN: ${{ github.token }}
           VARIANTE: ${{ inputs.publicar }}
