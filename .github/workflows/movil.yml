@@ -54,12 +54,12 @@ jobs:
       - name: Referencia del móvil (int8)
         if: always()
         run: |
-          /usr/bin/time -v python movil/referencia.py salida int8 prueba/cancion.wav prueba/letra_sincronizada.json prueba/movil_int8.json
+          python movil/referencia.py salida int8 prueba/cancion.wav prueba/letra_sincronizada.json prueba/movil_int8.json
           python kalena_letras/tests/check_selftest.py prueba/movil_int8.json prueba/verdad.json "móvil, int8" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Referencia del móvil (fp32)
         if: always()
         run: |
-          /usr/bin/time -v python movil/referencia.py salida fp32 prueba/cancion.wav prueba/letra_sincronizada.json prueba/movil_fp32.json
+          python movil/referencia.py salida fp32 prueba/cancion.wav prueba/letra_sincronizada.json prueba/movil_fp32.json
           python kalena_letras/tests/check_selftest.py prueba/movil_fp32.json prueba/verdad.json "móvil, fp32" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Referencia del móvil con coros sin escribir (fp32)
         if: always()
