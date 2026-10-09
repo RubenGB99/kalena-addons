@@ -162,24 +162,20 @@ def refine_start(start_ms: int, energy: np.ndarray, earliest_ms: int, hop_ms: in
 class EmissionModel:
     """MMS (Meta) para alineación forzada, vía torchaudio. Se descarga una vez a `model_dir`."""
 
-    def __init__(self, model_dir: str, threads: int = 4, star: bool | None = None):
+    def __init__(self, model_dir: str, threads: int = 4):
         import os
         os.environ.setdefault("TORCH_HOME", model_dir)
-        # «Comodín» (*) del modelo: la voz que no está en la letra (coros, «adlibs» o repeticiones
-        # sin escribir) se puede explicar con él en vez de forzar ahí palabras escritas. Se suma
-        # al hueco (blank), así que el alineador lo salta igual que un silencio.
-        self.star = os.environ.get("KALENA_COMODIN", "0") == "1" if star is None else star
         import torch
         import torchaudio
         torch.set_num_threads(threads)
         self.torch = torch
         bundle = torchaudio.pipelines.MMS_FA
-        self.model = bundle.get_model(with_star=self.star)
+        # Sin el comodín (*) del modelo: probado con coros y «adlibs» sin escribir, bajaba la
+        # confianza de todas las palabras a la mitad y se perdían líneas enteras (y sin él solo
+        # una palabra de 28 se desviaba).
+        self.model = bundle.get_model(with_star=False)
         self.model.eval()
         self.dictionary = bundle.get_dict(star=None)
-        if self.star:
-            with_star = bundle.get_dict(star="*")
-            assert with_star["*"] == len(with_star) - 1, "el comodín no es la última salida del modelo"
 
     def token_ids(self, tokens: str) -> list[int]:
         return [self.dictionary[c] for c in tokens if c in self.dictionary]
@@ -204,9 +200,6 @@ class EmissionModel:
                 chunk = torch.from_numpy(audio[a:b]).unsqueeze(0)
                 out, _ = self.model(chunk)
                 logp = torch.log_softmax(out[0], dim=-1).numpy()
-                if self.star:
-                    # El comodín es la última salida: se suma al hueco y se quita.
-                    logp = np.concatenate([np.logaddexp(logp[:, :1], logp[:, -1:]), logp[:, 1:-1]], axis=1)
                 per_sample = logp.shape[0] / max(1, b - a)
                 skip = int(round((pos - a) * per_sample))
                 keep = int(round((min(total, pos + window) - pos) * per_sample))
