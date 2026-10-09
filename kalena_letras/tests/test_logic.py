@@ -186,3 +186,18 @@ def test_search_song_falls_back_and_lists_similar():
     song, similar = jf.search_song("u", "DANNA - Cancion inventada")
     assert song is None
     assert {it["Id"] for it in similar} == {"a1", "a2"}
+
+
+def test_search_song_ignores_the_kind_of_apostrophe():
+    from kalena_letras.jellyfin import Jellyfin
+
+    class Fake(Jellyfin):
+        def __init__(self):
+            pass
+
+        def _json(self, method, path, params=None, body=None):
+            item = {"Id": "b1", "Name": "Don’t Stop", "Artists": ["Artista"]}
+            return {"Items": [item] if params["searchTerm"] in item["Name"] else []}
+
+    assert Fake().search_song("u", "Don't Stop")[0]["Id"] == "b1"
+    assert Fake().search_song("u", "Artista - Don't Stop")[0]["Id"] == "b1"

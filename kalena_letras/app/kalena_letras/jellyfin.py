@@ -21,8 +21,13 @@ class JellyfinError(Exception):
     pass
 
 
+# Apóstrofos (recto, tipográfico, acentos sueltos): «Don't» y «Don’t» son lo mismo.
+APOSTROPHES = "'’‘`´ʼ"
+
+
 def _simple(text: str) -> str:
-    text = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode().lower()
+    text = re.sub("[%s]" % APOSTROPHES, "", text or "")
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z0-9]+", " ", text).strip()
 
 
@@ -102,7 +107,11 @@ class Jellyfin:
 
         need = 3 if want_a else 2
         found: dict[str, dict] = {}
-        for term in dict.fromkeys(t for t in (title, want_t, artist) if t):
+        # El título con cada tipo de apóstrofo (Jellyfin distingue «'» de «’»), sin ellos ni tildes,
+        # su palabra más larga y el artista.
+        variants = [title, title.replace("’", "'"), title.replace("'", "’"), want_t,
+                    max(want_t.split(), key=len, default=""), artist]
+        for term in dict.fromkeys(t for t in variants if t):
             res = self._json("GET", "/Items", {
                 "userId": user_id, "searchTerm": term, "includeItemTypes": "Audio", "recursive": "true",
                 "fields": "Path", "limit": "50",

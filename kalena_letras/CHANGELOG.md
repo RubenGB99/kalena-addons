@@ -1,5 +1,8 @@
 # Cambios
 
+## 0.1.3
+- Títulos con apóstrofo: «Don't» y «Don’t» se consideran iguales al buscar (Jellyfin los distingue).
+
 ## 0.1.2
 - Encuentra mejor las canciones: si no sale con el título tal cual, la busca sin tildes ni signos
   y por el artista.
