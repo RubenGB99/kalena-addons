@@ -25,7 +25,8 @@ volver a la original desde Kalena: «Editar letra» → «Recuperar original»).
    - **Usuario**: el usuario de Jellyfin con el que se entra en Kalena. Solo se buscan canciones en
      las bibliotecas que ve ese usuario, y la copia de la letra original queda en su Kalena.
    - **Canciones**: 3 o 4 canciones de estilos distintos, una por línea, como
-     `DANNA - SUEÑO MOJADITO`. Tienen que tener ya la letra en Jellyfin. Si alguna no la encuentra,
+     `DANNA - SUEÑO MOJADITO`. Si alguna no tiene letra en Jellyfin, se toma de LRCLIB (como
+     hace Kalena); se puede desactivar con «Buscar la letra en LRCLIB». Si alguna no la encuentra,
      el registro dice lo más parecido que ve ese usuario, con su id; también se puede poner el id
      directamente (sale al final de la dirección de la canción en la web de Jellyfin, `id=…`).
    - **Separación de voces**: `maxima` (recomendada para la prueba).

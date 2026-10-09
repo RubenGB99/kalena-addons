@@ -17,6 +17,7 @@ import traceback
 
 import numpy as np
 
+from . import lrclib
 from . import lyrics as L
 from .align import SAMPLE_RATE, EmissionModel, energy_db
 from .audio import duration_s, read_mono, read_stereo, to_wav, write_wav
@@ -24,7 +25,7 @@ from .jellyfin import Jellyfin, JellyfinError
 from .separate import Separator
 from .timing import MIN_LINE_CONFIDENCE, Voice, line_windows, time_lines
 
-VERSION = "0.1.0"
+VERSION = "0.1.7"
 OPTIONS = os.environ.get("KALENA_OPTIONS", "/data/options.json")
 DATA = os.environ.get("KALENA_DATA", "/data")
 SHARE = os.environ.get("KALENA_SHARE", "/share/kalena_letras")
@@ -195,8 +196,19 @@ def process(song: dict, jf: Jellyfin, user_id: str, aligner: Aligner, opts: dict
     label = f"{artist} - {title}" if artist else title
     t0 = time.time()
     payload = jf.lyrics(sid)
+    source = "Jellyfin"
+    original = None  # lo que había en Jellyfin («Recuperar original» de Kalena vuelve a esto)
+    if payload and payload.get("Lyrics"):
+        original = L.original_lrc(payload)
+    elif opts.get("buscar_en_lrclib", True):
+        ticks = song.get("RunTimeTicks")
+        found = lrclib.find(title, artist, song.get("Album") or "", ticks / 10_000_000 if ticks else None, VERSION)
+        if found:
+            log.info("  · Sin letra en Jellyfin: se usa la de LRCLIB (%s).", "con tiempos por línea" if found[1] else "sin tiempos")
+            payload, source = lrclib.to_payload(*found), "LRCLIB"
     if not payload or not payload.get("Lyrics"):
-        return {"cancion": label, "resultado": "sin letra en Jellyfin (hace falta la letra para ponerle tiempos)"}
+        where = "ni en Jellyfin ni en LRCLIB" if opts.get("buscar_en_lrclib", True) else "en Jellyfin"
+        return {"cancion": label, "resultado": f"sin letra {where} (hace falta la letra para ponerle tiempos)"}
     lines = L.from_jellyfin(payload)
     if L.has_word_times(lines) and not opts.get("repetir"):
         return {"cancion": label, "resultado": "ya tiene tiempos por palabra (activa «repetir» para rehacerla)"}
@@ -227,7 +239,7 @@ def process(song: dict, jf: Jellyfin, user_id: str, aligner: Aligner, opts: dict
         "cancion": label,
         "id": sid,
         "duracion_cancion_s": round(length),
-        "letra_original": "con tiempos por línea" if synced else "sin tiempos",
+        "letra_original": ("con tiempos por línea" if synced else "sin tiempos") + f", de {source}",
         "lineas_con_tiempos_por_palabra": f"{report['timed']} de {report['total']}",
         "lineas_que_conservan_sus_tiempos_originales": sum(1 for l in lines if l.had_word_times and not l.timed),
         "lineas_reintentadas_con_voz_completa": report["fallback_full"],
@@ -241,7 +253,7 @@ def process(song: dict, jf: Jellyfin, user_id: str, aligner: Aligner, opts: dict
         result["resultado"] = "no se ha podido alinear ninguna línea con seguridad; no se toca la letra"
     elif opts.get("guardar_en_jellyfin", True):
         base_name = os.path.splitext(os.path.basename(song.get("Path") or "lyrics"))[0] or "lyrics"
-        jf.remember(user_id, sid, lrc, L.original_lrc(payload))
+        jf.remember(user_id, sid, lrc, original)
         jf.upload_lyrics(sid, base_name + ".lrc", lrc)
         try:
             jf.lock(user_id, sid)

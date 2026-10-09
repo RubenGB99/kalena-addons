@@ -17,6 +17,9 @@ configuration:
   guardar_en_jellyfin:
     name: Guardar en Jellyfin
     description: Si se desactiva, solo deja el resultado en /share/kalena_letras para revisarlo.
+  buscar_en_lrclib:
+    name: Buscar la letra en LRCLIB
+    description: Si la canción no tiene letra en Jellyfin, la toma de LRCLIB (lrclib.net, la misma fuente externa que Kalena).
   repetir:
     name: Repetir
     description: Vuelve a procesar canciones ya hechas o que ya tenían tiempos por palabra.

@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.1.7
+- Si la canción no tiene letra en Jellyfin, la busca en LRCLIB (lrclib.net, la misma fuente externa
+  que Kalena): primero la coincidencia exacta y, si no, la de duración más parecida (3 s como
+  mucho), mejor con tiempos por línea. Se puede desactivar («Buscar la letra en LRCLIB»).
+  «Recuperar la original» de Kalena deja esas canciones sin letra, como estaban en Jellyfin.
+
 ## 0.1.6
 - Las líneas que la IA no alinea con seguridad conservan sus tiempos por palabra si ya los tenían
   (antes se quedaban solo con el tiempo de línea y perdían el karaoke).

@@ -218,3 +218,22 @@ def test_lines_the_ai_does_not_time_keep_their_word_times():
     assert out[0] == "[00:01.00]<00:01.00>Hola <00:01.50>mundo<00:01.80>"
     assert out[1] == "[00:04.00]<00:04.00>Otra <00:04.50>vez<00:05.00>"
     assert lyrics.original_lrc(payload).splitlines()[0] == out[0]
+
+
+def test_lrclib_payload_and_pick():
+    from kalena_letras import lrclib
+    text = "[ar:Camila]\n[00:12.34]Don't go yet\n[00:15.00][01:02.5]Estribillo\n[00:20.00]\n"
+    payload = lrclib.to_payload(text, True)
+    starts = [(l["Text"], l["Start"] // lyrics.TICKS_PER_MS) for l in payload["Lyrics"]]
+    assert starts == [("Don't go yet", 12340), ("Estribillo", 15000), ("", 20000), ("Estribillo", 62500)]
+    lines = lyrics.from_jellyfin(payload)
+    assert lyrics.is_synced(lines) and [w.tokens for w in lines[0].words] == ["don't", "go", "yet"]
+    assert lrclib.to_payload("Una\n\nDos\n", False) == {"Lyrics": [{"Text": "Una"}, {"Text": "Dos"}]}
+    results = [
+        {"duration": 170, "plainLyrics": "a"},
+        {"duration": 181, "plainLyrics": "b"},
+        {"duration": 182, "syncedLyrics": "[00:01.00]c", "plainLyrics": "c"},
+        {"duration": 180, "instrumental": True},
+    ]
+    assert lrclib.pick(results, 181.5)["syncedLyrics"] == "[00:01.00]c"
+    assert lrclib.pick(results, 300) is None
