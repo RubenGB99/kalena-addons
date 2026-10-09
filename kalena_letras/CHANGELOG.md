@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.1.4
+- Canción no encontrada: el registro lo dice claro, «no encontrada en las bibliotecas de <usuario>»,
+  porque solo se busca en las bibliotecas que ve el usuario configurado.
+
 ## 0.1.3
 - Títulos con apóstrofo: «Don't» y «Don’t» se consideran iguales al buscar (Jellyfin los distingue).
 

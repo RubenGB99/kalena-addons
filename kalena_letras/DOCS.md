@@ -22,7 +22,8 @@ volver a la original desde Kalena: «Editar letra» → «Recuperar original»).
      este Home Assistant. Si no conecta, prueba con la IP del mini PC, por ejemplo
      `http://192.168.1.50:8096`.
    - **Clave de API**: la del paso 1 (solo se guarda en Home Assistant).
-   - **Usuario**: el usuario de Jellyfin con el que se entra en Kalena.
+   - **Usuario**: el usuario de Jellyfin con el que se entra en Kalena. Solo se buscan canciones en
+     las bibliotecas que ve ese usuario, y la copia de la letra original queda en su Kalena.
    - **Canciones**: 3 o 4 canciones de estilos distintos, una por línea, como
      `DANNA - SUEÑO MOJADITO`. Tienen que tener ya la letra en Jellyfin. Si alguna no la encuentra,
      el registro dice lo más parecido que ve ese usuario, con su id; también se puede poner el id
