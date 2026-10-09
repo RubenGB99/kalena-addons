@@ -20,6 +20,8 @@ from .lyrics import Line, Word
 # Confianza mínima (media de las letras) para dar por buenas las palabras de una línea. Se ajusta
 # con los informes de la fase de prueba.
 MIN_LINE_CONFIDENCE = 0.30
+# Por debajo de esto, la línea se prueba también con la voz completa (principal + coros).
+FULL_VOICE_BELOW = 0.45
 MIN_BACKING_CONFIDENCE = 0.35
 # Una palabra de coro solo se da por buena si la IA la reconoce con esta seguridad…
 MIN_BACKING_WORD_CONFIDENCE = 0.5
@@ -167,7 +169,7 @@ def time_lines(lines: list[Line], lead: Voice, backing: Voice | None, full: Call
         used = lead.name
         res = _align_words(lead, line.lead_words, token_ids, a, b, before, after)
         conf = res[1] if res else 0.0
-        if conf < MIN_LINE_CONFIDENCE + 0.15:
+        if conf < FULL_VOICE_BELOW:
             if full_voice is None:
                 full_voice = full()
             if full_voice is not None:
